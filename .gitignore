@@ -1,0 +1,33 @@
+
+# Local env & venv
+.env
+server/onnx_platform_env/
+
+# Local env & venv
+.env
+server/onnx_platform_env/
+server/onnx_platform_env/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.so
+.idea/
+.vscode/
+.env
+
+# Local dev only
+server/onnx_platform_env/
+.idea/
+__pycache__/
+*.py[cod]
+*.so
+.env
+
+# Local dev only
+server/onnx_platform_env/
+.idea/
+__pycache__/
+*.py[cod]
+*.so
+.env

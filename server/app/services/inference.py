@@ -48,7 +48,6 @@ async def infer(request: InferenceRequest, model_name):
         
         type = onnx_to_numpy_dtype.get(session.get_inputs()[0].type)
         input_data = np.array(request.input).astype(type)
-        input_data = request.input
         input_name = session.get_inputs()[0].name
         output_name = session.get_outputs()[0].name
 
