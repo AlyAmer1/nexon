@@ -1,88 +1,169 @@
 # File: server/app/services/shared/model_cache.py
-# Description: A shared, in-memory cache for ONNX inference sessions.
+# Async ONNX InferenceSession cache backed by MongoDB GridFS (Motor).
+from __future__ import annotations
 
-import functools
-from typing import Optional
-import onnxruntime as ort
-from gridfs import GridFS
+import asyncio
+import os
+import time
+import logging
+from typing import Any, Dict, Tuple
+
 from bson import ObjectId
+import onnxruntime as ort
+
+try:
+    from motor.motor_asyncio import AsyncIOMotorGridFSBucket  # type: ignore
+except Exception:  # pragma: no cover
+    AsyncIOMotorGridFSBucket = None  # for type checkers when Motor isn't installed
+
 
 class ModelCache:
     """
-    Manages an in-memory cache for ONNX Runtime inference sessions using a
-    thread-safe LRU (Least Recently Used) policy. This is designed to be
-    instantiated as a singleton within each service that needs it.
+    Async in-memory cache of ONNX Runtime InferenceSession keyed by GridFS file_id.
 
-    This class is the implementation of the "Model Cache" component in the
-    Level 3 System Architecture diagram and is a critical performance optimization.
+    - Key: GridFS file_id (ObjectId). Accepts str|ObjectId; normalized to ObjectId.
+    - Storage: dict acting as LRU with 'last_used' timestamps.
+    - Concurrency: per-key asyncio.Lock prevents duplicate concurrent loads.
+    - Session creation: from bytes via onnxruntime.InferenceSession.
+    - Tunables via env:
+        * MODEL_CACHE_MAX (default 64)
+        * MODEL_CACHE_TTL (default 0; 0 = no TTL)
+        * ORT_INTRA_OP_THREADS (default 0)
+        * ORT_INTER_OP_THREADS (default 0)
+        * ORT_GRAPH_OPT_LEVEL (default 99)
+        * MODEL_CACHE_LOG (default 0; 1 enables INFO/DEBUG logs)
     """
 
-    def __init__(self, gridfs_db: GridFS, capacity: int = 128):
-        """
-        Initializes the cache.
-        Args:
-            gridfs_db: An active GridFS instance to load models from on a cache miss.
-            capacity: The maximum number of inference sessions to store in memory.
-        """
-        if not isinstance(gridfs_db, GridFS):
-            raise TypeError("gridfs_db must be an instance of gridfs.GridFS")
+    def __init__(
+            self,
+            gridfs_db: Any,
+            *,
+            max_entries: int | None = None,
+            ttl_seconds: int | None = None,
+            providers: list[str] | None = None,
+    ):
+        if not hasattr(gridfs_db, "open_download_stream"):
+            raise TypeError("gridfs_db must expose 'open_download_stream(file_id)' (Motor GridFS bucket).")
+        if AsyncIOMotorGridFSBucket is not None and not isinstance(gridfs_db, AsyncIOMotorGridFSBucket):
+            # Soft check only; allow fakes in tests
+            pass
 
-        self.gridfs = gridfs_db
-        # We use functools.lru_cache as a ready-made, high-performance, and thread-safe
-        # implementation of an LRU cache. It memoizes the results of _load_session.
-        self._get_session_from_cache = functools.lru_cache(maxsize=capacity)(self._load_session)
+        self._fs = gridfs_db
+        self._max = max_entries or int(os.environ.get("MODEL_CACHE_MAX", "64"))
+        self._ttl = ttl_seconds or int(os.environ.get("MODEL_CACHE_TTL", "0"))
+        self._providers = providers  # None -> ORT default
+        self._cache: Dict[ObjectId, Tuple[ort.InferenceSession, float, float]] = {}
+        self._locks: Dict[ObjectId, asyncio.Lock] = {}
+        self._global_lock = asyncio.Lock()
 
-    def _load_session(self, file_id_str: str) -> ort.InferenceSession:
-        """
-        Private method to load a model from GridFS and create an InferenceSession.
-        This function is the one that gets memoized by lru_cache. A 'cache miss'
-        triggers the execution of this code.
+        # Logging (off by default)
+        self._log = logging.getLogger("model_cache")
+        self._verbose = os.environ.get("MODEL_CACHE_LOG", "0") == "1"
 
-        Args:
-            file_id_str: The string representation of the model's ObjectId in GridFS.
-        Returns:
-            An ONNX Runtime InferenceSession.
-        Raises:
-            FileNotFoundError: If the file_id is not found in GridFS.
-            ValueError: If the model file is corrupted or not a valid ONNX model.
-        """
-        print(f"--- CACHE MISS --- Loading model from GridFS with file_id: {file_id_str}")
+        # Session options (reproducible experiments)
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = int(os.environ.get("ORT_INTRA_OP_THREADS", "0"))
+        so.inter_op_num_threads = int(os.environ.get("ORT_INTER_OP_THREADS", "0"))
         try:
-            file_id = ObjectId(file_id_str)
-            if not self.gridfs.exists(file_id):
-                raise FileNotFoundError(f"Model file with id {file_id_str} not found in GridFS.")
+            opt_level = int(os.environ.get("ORT_GRAPH_OPT_LEVEL", "99"))
+            so.graph_optimization_level = opt_level
+        except Exception:
+            pass
+        self._sess_options = so
 
-            model_file = self.gridfs.get(file_id)
-            model_bytes = model_file.read()
-
-            # This is the most computationally expensive step that we are caching.
-            # Using specific providers can further optimize performance.
-            providers = ['CPUExecutionProvider']
-            session = ort.InferenceSession(model_bytes, providers=providers)
-            return session
-        except FileNotFoundError:
-            # Re-raise to be handled by the calling service
-            raise
+    def _normalize_id(self, file_id: Any) -> ObjectId:
+        if isinstance(file_id, ObjectId):
+            return file_id
+        try:
+            return ObjectId(str(file_id))
         except Exception as e:
-            # Catch potential onnxruntime errors from corrupted files
-            raise ValueError(f"Failed to load ONNX model for file_id {file_id_str}: {e}")
+            raise ValueError(f"Invalid GridFS file_id '{file_id}': {e}") from e
 
-    def get_session(self, file_id: str) -> Optional[ort.InferenceSession]:
-        """
-        Public method to retrieve an inference session from the cache.
-        This is the primary method that services should call.
+    def _lock_for(self, oid: ObjectId) -> asyncio.Lock:
+        lk = self._locks.get(oid)
+        if lk is None:
+            lk = self._locks[oid] = asyncio.Lock()
+        return lk
 
-        Args:
-            file_id: The string representation of the model's ObjectId in GridFS.
-        Returns:
-            The cached InferenceSession, or None if loading failed.
-        """
-        if not file_id or not isinstance(file_id, str):
-            print("Error: Invalid file_id provided to get_session.")
+    async def get_session(self, file_id: Any) -> ort.InferenceSession:
+        oid = self._normalize_id(file_id)
+        now = time.time()
+
+        sess = await self._get_if_fresh(oid, now)
+        if sess is not None:
+            if self._verbose:
+                self._log.info("CACHE HIT file_id=%s", oid)
+            return sess
+
+        lk = self._lock_for(oid)
+        async with lk:
+            sess = await self._get_if_fresh(oid, now)
+            if sess is not None:
+                if self._verbose:
+                    self._log.info("CACHE HIT (post-lock) file_id=%s", oid)
+                return sess
+
+            # Miss → load
+            if self._verbose:
+                self._log.info("CACHE MISS file_id=%s — loading from GridFS...", oid)
+            try:
+                grid_out = await self._fs.open_download_stream(file_id=oid)
+                model_bytes = await grid_out.read()
+                if self._verbose:
+                    self._log.debug("READ %d bytes for file_id=%s", len(model_bytes), oid)
+            except Exception as e:
+                raise RuntimeError(f"Failed to read model bytes from GridFS for {oid}: {e}") from e
+
+            try:
+                session = ort.InferenceSession(
+                    model_bytes,
+                    sess_options=self._sess_options,
+                    providers=self._providers,
+                )
+            except Exception as e:
+                raise RuntimeError(f"Failed to create InferenceSession for {oid}: {e}") from e
+
+            async with self._global_lock:
+                self._cache[oid] = (session, now, now)
+                self._evict_if_needed(now=now)
+            if self._verbose:
+                self._log.info("CACHE LOAD COMPLETE file_id=%s", oid)
+
+            return session
+
+    async def _get_if_fresh(self, oid: ObjectId, now: float) -> ort.InferenceSession | None:
+        tpl = self._cache.get(oid)
+        if not tpl:
+            return None
+        session, loaded_at, last_used = tpl
+
+        if self._ttl > 0 and (now - loaded_at) > self._ttl:
+            async with self._global_lock:
+                self._cache.pop(oid, None)
+            if self._verbose:
+                self._log.info("CACHE EXPIRED file_id=%s ttl=%ss", oid, self._ttl)
             return None
 
-        try:
-            return self._get_session_from_cache(file_id)
-        except (FileNotFoundError, ValueError) as e:
-            print(f"Error retrieving session from cache: {e}")
-            return None
+        async with self._global_lock:
+            self._cache[oid] = (session, loaded_at, now)
+        return session
+
+    def _evict_if_needed(self, now: float) -> None:
+        if self._max <= 0:
+            return
+        while len(self._cache) > self._max:
+            oldest_oid = min(self._cache.items(), key=lambda kv: kv[1][2])[0]
+            self._cache.pop(oldest_oid, None)
+            if self._verbose:
+                self._log.info("CACHE EVICT file_id=%s", oldest_oid)
+
+    def invalidate(self, file_id: Any) -> None:
+        oid = self._normalize_id(file_id)
+        self._cache.pop(oid, None)
+        if self._verbose:
+            self._log.info("CACHE INVALIDATE file_id=%s", oid)
+
+    def clear(self) -> None:
+        self._cache.clear()
+        if self._verbose:
+            self._log.info("CACHE CLEAR all")

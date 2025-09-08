@@ -11,9 +11,9 @@ import numpy as np
 import pymongo
 import gridfs
 
-from server.app.services.shared.model_cache import ModelCache
-from . import inference_pb2 as pb
-from . import inference_pb2_grpc as pb_grpc
+from app.services.shared.model_cache import ModelCache
+import inference_pb2 as pb
+import inference_pb2_grpc as pb_grpc
 
 log = logging.getLogger("nexon.grpc.sync")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")

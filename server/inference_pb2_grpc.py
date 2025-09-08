@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import inference_pb2 as inference__pb2
+import inference_pb2 as inference__pb2
 
 GRPC_GENERATED_VERSION = '1.74.0'
 GRPC_VERSION = grpc.__version__
@@ -26,8 +26,7 @@ if _version_not_supported:
 
 
 class InferenceServiceStub(object):
-    """The InferenceService provides a Unary RPC for performing inference on a deployed model.
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
         """Constructor.
@@ -36,18 +35,17 @@ class InferenceServiceStub(object):
             channel: A grpc.Channel.
         """
         self.Predict = channel.unary_unary(
-                '/nexon.grpc.inference.InferenceService/Predict',
+                '/nexon.grpc.inference.v1.InferenceService/Predict',
                 request_serializer=inference__pb2.PredictRequest.SerializeToString,
                 response_deserializer=inference__pb2.PredictReply.FromString,
                 _registered_method=True)
 
 
 class InferenceServiceServicer(object):
-    """The InferenceService provides a Unary RPC for performing inference on a deployed model.
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def Predict(self, request, context):
-        """Predict performs inference on a given model version.
+        """Unary RPC that mirrors the functionality of the POST /infer/{model_name} REST endpoint.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -63,15 +61,14 @@ def add_InferenceServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'nexon.grpc.inference.InferenceService', rpc_method_handlers)
+            'nexon.grpc.inference.v1.InferenceService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('nexon.grpc.inference.InferenceService', rpc_method_handlers)
+    server.add_registered_method_handlers('nexon.grpc.inference.v1.InferenceService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
 class InferenceService(object):
-    """The InferenceService provides a Unary RPC for performing inference on a deployed model.
-    """
+    """Missing associated documentation comment in .proto file."""
 
     @staticmethod
     def Predict(request,
@@ -87,7 +84,7 @@ class InferenceService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/nexon.grpc.inference.InferenceService/Predict',
+            '/nexon.grpc.inference.v1.InferenceService/Predict',
             inference__pb2.PredictRequest.SerializeToString,
             inference__pb2.PredictReply.FromString,
             options,
