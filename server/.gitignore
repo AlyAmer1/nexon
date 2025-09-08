@@ -13,3 +13,6 @@ ENV/
 
 # Database
 *.db
+
+# Ignore Python type stub artifacts
+*.pyi

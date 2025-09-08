@@ -31,3 +31,7 @@ __pycache__/
 *.py[cod]
 *.so
 .env
+
+# Local env (do not commit)
+server/.env
+*.pyi
