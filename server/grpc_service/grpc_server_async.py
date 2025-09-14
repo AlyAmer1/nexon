@@ -9,13 +9,17 @@ import time
 import uuid
 import numpy as np
 import grpc
+import signal
+import functools
 
 from dotenv import load_dotenv
-load_dotenv()  # find server/.env when run from repo root or ./server
 
 # Generated stubs (run as: python -m grpc_service.grpc_server_async)
 import inference_pb2 as pb
 import inference_pb2_grpc as pb_grpc
+
+# gRPC health service
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 # Shared orchestrator (REST + gRPC)
 from app.services.shared.orchestrator import (
@@ -28,6 +32,7 @@ from app.services.shared.orchestrator import (
 # Per-process Mongo/Motor
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 
+load_dotenv()  # find server/.env when run from repo root or ./server
 
 # -------------------------- logging ------------------------------------------
 RESET   = "\x1b[0m"
@@ -202,14 +207,12 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
                     or NP_TO_PROTO.get(out_arr.dtype.newbyteorder("<"))
             )
             if proto_dt is None:
-                # Very rare: ORT produced a dtype we don't advertise
                 status = grpc.StatusCode.INTERNAL
                 reason = f"unsupported output dtype: {out_arr.dtype}"
                 context.set_code(status)
                 context.set_details(reason)
                 return pb.PredictReply()
 
-            # Use output[0] name for completeness
             reply_t = pb.ResponseTensor()
             reply_t.name = ""  # optional; clients generally don't require the name
             reply_t.dims.extend(list(out_arr.shape))
@@ -233,7 +236,7 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
 
 # ------------------------------ server boot ----------------------------------
 async def serve():
-    """Start the async gRPC server and shut down cleanly on exit."""
+    """Start the async gRPC server and shut down cleanly on first SIGINT/SIGTERM."""
     mongo_uri = os.environ.get("NEXON_MONGO_URI", "mongodb://localhost:27017")
     mongo_db  = os.environ.get("NEXON_MONGO_DB",  "onnx_platform")
 
@@ -249,31 +252,79 @@ async def serve():
         ("grpc.max_send_message_length",    max_send),
     ])
 
+    # Register inference service
     pb_grpc.add_InferenceServiceServicer_to_server(
         InferenceService(models_collection=models_collection, gridfs_bucket=gridfs_bucket),
         server,
     )
 
+    # Health service
+    health_servicer = health.HealthServicer()
+    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    health_servicer.set("inference.InferenceService", health_pb2.HealthCheckResponse.SERVING)
+    health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+
     addr = os.environ.get("GRPC_BIND", "[::]:50051")
     server.add_insecure_port(addr)
-    await server.start()
-    print(f"gRPC server listening on {addr}")
 
-    # sanity: visible deployed names (helps catch DB/URI mismatches)
-    await _debug_log_deployed_names(models_collection)
+    # ---- signal handling (first ^C -> graceful; second ^C -> force) ----
+    loop = asyncio.get_running_loop()
+    shutdown_event = asyncio.Event()
+    shutting_down = {"value": False}
 
-    try:
-        await server.wait_for_termination()
-    except (KeyboardInterrupt, asyncio.CancelledError):
-        pass
-    finally:
+    def _begin_shutdown(sig: signal.Signals):
+        if not shutting_down["value"]:
+            shutting_down["value"] = True
+            log.info("Signal %s received. Beginning graceful shutdown…", sig.name)
+            shutdown_event.set()
+        else:
+            log.warning("Second %s received. Forcing exit.", sig.name)
+            # Hard exit to avoid event-loop 'closed' stack traces
+            os._exit(1)
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            grace = float(os.environ.get("GRPC_GRACE_SECONDS", "5"))
-            await asyncio.shield(server.stop(grace=grace))
+            loop.add_signal_handler(sig, functools.partial(_begin_shutdown, sig))
+        except NotImplementedError:
+            # Fallback (Windows): last resort
+            signal.signal(sig, lambda *_: _begin_shutdown(sig))
+
+    # ---- start & run ----
+    await server.start()
+    log.info("gRPC server listening on %s", addr)
+
+    # best-effort: list deployed models (can be cancelled safely)
+    dbg_task = asyncio.create_task(_debug_log_deployed_names(models_collection))
+
+    # Wait until a signal arrives
+    await shutdown_event.wait()
+
+    # ---- graceful stop ----
+    try:
+        # Advertise NOT_SERVING so Envoy drains before we close connections
+        try:
+            health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
+            health_servicer.set("inference.InferenceService", health_pb2.HealthCheckResponse.NOT_SERVING)
+        except Exception:
+            pass
+
+        # Cancel any background tasks we started
+        dbg_task.cancel()
+        try:
+            await dbg_task
         except asyncio.CancelledError:
             pass
-        finally:
+
+        grace = float(os.environ.get("GRPC_GRACE_SECONDS", "5"))
+        await server.stop(grace)
+        await server.wait_for_termination()
+    finally:
+        # Close DB client while loop is still alive to avoid PyMongo threadpool noise
+        try:
             client.close()
+        except Exception:
+            pass
+        log.info("Shutdown complete.")
 
 
 if __name__ == "__main__":

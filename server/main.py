@@ -1,14 +1,19 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.inference import app as inference_app
 from app.services.deployment import app as deployment_app
 from app.services.upload import app as upload_app
 from app.services.database import fs, models_collection
 from bson import ObjectId
-from pydantic import BaseModel
+
 
 # Create the main FastAPI app
 app = FastAPI()
+
+# Health endpoint for Envoy/monitoring
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    return {"status": "ok"}
 
 # Mount the inference API to the main app (if modularized)
 app.mount("/inference", inference_app)
@@ -18,7 +23,7 @@ app.mount("/upload", upload_app)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
     allow_headers=["*"],  # Allow all headers
@@ -36,7 +41,7 @@ async def getUploadedModels():
     for model in models:
         model["_id"] = str(model["_id"])
         model["file_id"] = str(model["file_id"])
-        
+
     return models
 
 @app.get("/uploadedModels")
@@ -45,7 +50,7 @@ async def getUploadedModels():
     for model in models:
         model["_id"] = str(model["_id"])
         model["file_id"] = str(model["file_id"])
-        
+
     return models
 
 @app.get("/allModels")
@@ -54,7 +59,7 @@ async def getAllModels():
     for model in models:
         model["_id"] = str(model["_id"])
         model["file_id"] = str(model["file_id"])
-        
+
     return models
 
 
@@ -86,6 +91,3 @@ async def delete_model(model_name: str, model_version: int):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting model: {str(e)}")
-
-
-

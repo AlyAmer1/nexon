@@ -1,4 +1,3 @@
-import onnxruntime as ort
 from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from pydantic import BaseModel
 from datetime import datetime

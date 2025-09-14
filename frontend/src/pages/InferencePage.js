@@ -16,7 +16,7 @@ const Inference = () => {
 
   // Fetch available models from the backend
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/deployedModels")
+    axios.get("http://127.0.0.1:8080/deployedModels")
       .then(response => {
         setModels(response.data || []); 
         if (selectedModelFromURL) {
@@ -49,7 +49,7 @@ const Inference = () => {
     try {
       const inputData = JSON.parse(inputs);
       console.log(inputData)
-      const response = await axios.post(`http://127.0.0.1:8000/inference/infer/${selectedModel}`, { 
+      const response = await axios.post(`http://127.0.0.1:8080/inference/infer/${selectedModel}`, {
       input: inputData,
       headers: { "Content-Type": "application/json" }
      });

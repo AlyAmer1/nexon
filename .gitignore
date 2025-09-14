@@ -1,3 +1,6 @@
+# Envoy logs
+/server/envoy/logs/*
+!server/envoy/logs/.gitkeep
 
 # Local env & venv
 .env

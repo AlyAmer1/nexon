@@ -1,10 +1,9 @@
-# File: server/app/services/shared/orchestrator.py
 # Async inference orchestrator shared by REST and gRPC.
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, List, Sequence
 
 import numpy as np
 import onnxruntime as ort
@@ -65,22 +64,30 @@ def _shape_compatible(expected, actual) -> bool:
     return True
 
 
-def _numpy_from_bytes(buf: bytes, dims: List[int], dtype: np.dtype) -> np.ndarray:
+def _numpy_from_bytes(buf: bytes, dims: Sequence[int], dtype: np.dtype) -> np.ndarray:
     """Rebuild a C-contiguous NumPy array from raw bytes and dims, validating size."""
+    dims = [int(d) for d in dims]               # ensure plain ints
     if not dims:
         raise InvalidInputError("input.dims must be provided and non-empty.")
-    # Bool doesn’t have endianness; we accept 0/1 bytes and cast to bool.
+
+    # validate total byte size using pure-Python types (keeps type-checkers happy)
+    elems = 1
+    for d in dims:
+        elems *= int(d)
     elem_size = 1 if dtype == np.dtype(np.bool_) else int(dtype.itemsize)
-    expected = int(np.prod(dims)) * elem_size
+    expected = elems * elem_size
     if len(buf) != expected:
         raise InvalidInputError(
-            f"tensor_content size {len(buf)} != prod(dims) {int(np.prod(dims))} * elem_size {elem_size}"
+            f"tensor_content size {len(buf)} != prod(dims) {elems} * elem_size {elem_size}"
         )
+
+    mv = memoryview(buf)
     if dtype == np.dtype(np.bool_):
-        arr = np.frombuffer(buf, dtype=np.uint8).astype(np.bool_, copy=False)
+        arr = np.frombuffer(mv, dtype=np.uint8).astype(np.bool_, copy=False)
     else:
-        arr = np.frombuffer(buf, dtype=dtype)
-    return np.ascontiguousarray(arr.reshape(dims))
+        arr = np.frombuffer(mv, dtype=dtype)
+
+    return np.ascontiguousarray(arr).reshape(tuple(dims))
 
 
 # ---------- Orchestrator ----------
@@ -127,10 +134,10 @@ class InferenceOrchestrator:
         file_id = await self._resolve_deployed_file_id(model_name)
         session = await self._load_session(file_id)
 
-        in_meta   = session.get_inputs()[0]
-        in_name   = in_meta.name
-        onnx_dt   = in_meta.type or ""
-        np_dtype  = ONNX_TO_NP.get(onnx_dt)
+        in_meta = session.get_inputs()[0]
+        in_name = in_meta.name
+        onnx_dt = in_meta.type or ""
+        np_dtype = ONNX_TO_NP.get(onnx_dt)
         if np_dtype is None:
             raise InvalidInputError(f"Unsupported ONNX input dtype: {onnx_dt}")
 
@@ -154,7 +161,7 @@ class InferenceOrchestrator:
             self,
             *,
             model_name: str,
-            dims: List[int],
+            dims: Sequence[int],
             raw_bytes: bytes,
             provided_name: str = "",
     ) -> List[np.ndarray]:
@@ -167,16 +174,17 @@ class InferenceOrchestrator:
         file_id = await self._resolve_deployed_file_id(model_name)
         session = await self._load_session(file_id)
 
-        in_meta   = session.get_inputs()[0]
-        in_name   = in_meta.name
-        onnx_dt   = in_meta.type or ""
-        np_dtype  = ONNX_TO_NP.get(onnx_dt)
+        in_meta = session.get_inputs()[0]
+        in_name = in_meta.name
+        onnx_dt = in_meta.type or ""
+        np_dtype = ONNX_TO_NP.get(onnx_dt)
         if np_dtype is None:
             raise InvalidInputError(f"Unsupported ONNX input dtype: {onnx_dt}")
 
         if provided_name and provided_name != in_name:
             raise InvalidInputError(f"input.name '{provided_name}' does not match model input[0] '{in_name}'.")
 
+        dims = [int(d) for d in dims]
         arr = _numpy_from_bytes(raw_bytes, dims, np_dtype)
 
         exp_shape = in_meta.shape

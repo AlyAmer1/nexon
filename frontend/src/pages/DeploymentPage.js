@@ -15,7 +15,7 @@ const Deploy = () => {
 
   // Fetch available models from the backend
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/uploadedModels")
+    axios.get("http://127.0.0.1:8080/uploadedModels")
       .then(response => {
         setModels(response.data || []); 
         if (selectedModelFromURL) {
@@ -59,12 +59,12 @@ const Deploy = () => {
         const formData = new FormData();
         formData.append("file", file);
 
-        response = await axios.post("http://127.0.0.1:8000/deployment/deploy-file/", formData, {
+        response = await axios.post("http://127.0.0.1:8080/deployment/deploy-file/", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
       } else {
         const model = models.find(model => model.name === selectedModel);
-        response = await axios.post("http://127.0.0.1:8000/deployment/deploy-model/", {
+        response = await axios.post("http://127.0.0.1:8080/deployment/deploy-model/", {
           model_name: selectedModel,
           model_id: model._id,
         });

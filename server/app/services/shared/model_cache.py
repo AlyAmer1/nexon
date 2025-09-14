@@ -3,23 +3,28 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
-import logging
 from typing import Any, Dict, Tuple
 
 from bson import ObjectId
-import onnxruntime as ort
+import onnxruntime as ort  # use qualified names to avoid stub/IDE issues
 
 try:
+    # Motor is optional at type-check time; we only *use* the GridFS bucket interface.
     from motor.motor_asyncio import AsyncIOMotorGridFSBucket  # type: ignore
 except Exception:  # pragma: no cover
-    AsyncIOMotorGridFSBucket = None  # for type checkers when Motor isn't installed
+    AsyncIOMotorGridFSBucket = None  # helps static analyzers when Motor isn't present
+
+
+# Aliases to keep type hints readable while still importing ort safely
+OrtInferenceSession = ort.InferenceSession
 
 
 class ModelCache:
     """
-    Async in-memory cache of ONNX Runtime InferenceSession keyed by GridFS file_id.
+    Async in-memory cache of ONNX Runtime InferenceSessions keyed by GridFS file_id.
 
     - Key: GridFS file_id (ObjectId). Accepts str|ObjectId; normalized to ObjectId.
     - Storage: dict acting as LRU with 'last_used' timestamps.
@@ -44,15 +49,15 @@ class ModelCache:
     ):
         if not hasattr(gridfs_db, "open_download_stream"):
             raise TypeError("gridfs_db must expose 'open_download_stream(file_id)' (Motor GridFS bucket).")
+        # Soft check only; allow fakes/mocks in tests
         if AsyncIOMotorGridFSBucket is not None and not isinstance(gridfs_db, AsyncIOMotorGridFSBucket):
-            # Soft check only; allow fakes in tests
             pass
 
         self._fs = gridfs_db
         self._max = max_entries or int(os.environ.get("MODEL_CACHE_MAX", "64"))
         self._ttl = ttl_seconds or int(os.environ.get("MODEL_CACHE_TTL", "0"))
         self._providers = providers  # None -> ORT default
-        self._cache: Dict[ObjectId, Tuple[ort.InferenceSession, float, float]] = {}
+        self._cache: Dict[ObjectId, Tuple[OrtInferenceSession, float, float]] = {}
         self._locks: Dict[ObjectId, asyncio.Lock] = {}
         self._global_lock = asyncio.Lock()
 
@@ -60,18 +65,24 @@ class ModelCache:
         self._log = logging.getLogger("model_cache")
         self._verbose = os.environ.get("MODEL_CACHE_LOG", "0") == "1"
 
-        # Session options (reproducible experiments)
-        so = ort.SessionOptions()
+        # Session options (robust to missing stubs in IDEs)
+        SessionOptionsCls = getattr(ort, "SessionOptions", None)
+        if SessionOptionsCls is None:
+            raise RuntimeError("onnxruntime.SessionOptions not found — check your onnxruntime installation.")
+        so = SessionOptionsCls()
         so.intra_op_num_threads = int(os.environ.get("ORT_INTRA_OP_THREADS", "0"))
         so.inter_op_num_threads = int(os.environ.get("ORT_INTER_OP_THREADS", "0"))
         try:
             opt_level = int(os.environ.get("ORT_GRAPH_OPT_LEVEL", "99"))
-            so.graph_optimization_level = opt_level
+            # Some stubs don’t advertise this attribute; it exists at runtime.
+            so.graph_optimization_level = opt_level  # type: ignore[attr-defined]
         except Exception:
             pass
         self._sess_options = so
 
-    def _normalize_id(self, file_id: Any) -> ObjectId:
+    @staticmethod
+    def _normalize_id(file_id: Any) -> ObjectId:
+        """Return a valid ObjectId for str/ObjectId input; raise on invalid."""
         if isinstance(file_id, ObjectId):
             return file_id
         try:
@@ -85,7 +96,11 @@ class ModelCache:
             lk = self._locks[oid] = asyncio.Lock()
         return lk
 
-    async def get_session(self, file_id: Any) -> ort.InferenceSession:
+    async def get_session(self, file_id: Any) -> OrtInferenceSession:
+        """
+        Return a cached ORT session for file_id, loading it from GridFS on a cache miss.
+        Concurrent calls for the same file_id are serialized.
+        """
         oid = self._normalize_id(file_id)
         now = time.time()
 
@@ -97,6 +112,7 @@ class ModelCache:
 
         lk = self._lock_for(oid)
         async with lk:
+            # Re-check after acquiring the per-key lock
             sess = await self._get_if_fresh(oid, now)
             if sess is not None:
                 if self._verbose:
@@ -106,6 +122,7 @@ class ModelCache:
             # Miss → load
             if self._verbose:
                 self._log.info("CACHE MISS file_id=%s — loading from GridFS...", oid)
+            grid_out = None
             try:
                 grid_out = await self._fs.open_download_stream(file_id=oid)
                 model_bytes = await grid_out.read()
@@ -113,6 +130,19 @@ class ModelCache:
                     self._log.debug("READ %d bytes for file_id=%s", len(model_bytes), oid)
             except Exception as e:
                 raise RuntimeError(f"Failed to read model bytes from GridFS for {oid}: {e}") from e
+            finally:
+                # Best-effort close; supports both async and sync close() implementations.
+                try:
+                    if grid_out is not None:
+                        closer = getattr(grid_out, "close", None)
+                        if callable(closer):
+                            result = closer()
+                            if asyncio.iscoroutine(result):
+                                await result
+                except Exception:
+                    # Never let a close error mask the actual operation outcome.
+                    if self._verbose:
+                        self._log.debug("Ignoring GridFS close() error for file_id=%s", oid)
 
             try:
                 session = ort.InferenceSession(
@@ -131,12 +161,13 @@ class ModelCache:
 
             return session
 
-    async def _get_if_fresh(self, oid: ObjectId, now: float) -> ort.InferenceSession | None:
+    async def _get_if_fresh(self, oid: ObjectId, now: float) -> OrtInferenceSession | None:
         tpl = self._cache.get(oid)
         if not tpl:
             return None
         session, loaded_at, last_used = tpl
 
+        # TTL check (0 = disabled)
         if self._ttl > 0 and (now - loaded_at) > self._ttl:
             async with self._global_lock:
                 self._cache.pop(oid, None)
@@ -144,6 +175,7 @@ class ModelCache:
                 self._log.info("CACHE EXPIRED file_id=%s ttl=%ss", oid, self._ttl)
             return None
 
+        # Touch LRU timestamp
         async with self._global_lock:
             self._cache[oid] = (session, loaded_at, now)
         return session
@@ -152,18 +184,28 @@ class ModelCache:
         if self._max <= 0:
             return
         while len(self._cache) > self._max:
-            oldest_oid = min(self._cache.items(), key=lambda kv: kv[1][2])[0]
+            # Find entry with the oldest 'last_used' (LRU)
+            oldest_oid: ObjectId | None = None
+            oldest_last_used = float("inf")
+            for oid, (_sess, _loaded_at, last_used) in self._cache.items():
+                if last_used < oldest_last_used:
+                    oldest_last_used = last_used
+                    oldest_oid = oid
+            if oldest_oid is None:
+                break
             self._cache.pop(oldest_oid, None)
             if self._verbose:
                 self._log.info("CACHE EVICT file_id=%s", oldest_oid)
 
     def invalidate(self, file_id: Any) -> None:
+        """Remove a single entry from the cache (best-effort)."""
         oid = self._normalize_id(file_id)
         self._cache.pop(oid, None)
         if self._verbose:
             self._log.info("CACHE INVALIDATE file_id=%s", oid)
 
     def clear(self) -> None:
+        """Clear the entire cache (best-effort)."""
         self._cache.clear()
         if self._verbose:
             self._log.info("CACHE CLEAR all")

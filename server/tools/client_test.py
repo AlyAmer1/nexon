@@ -1,4 +1,3 @@
-# File: server/tools/client_test.py
 """
 NEXON gRPC test client with optional REST parity checks.
 
@@ -10,7 +9,7 @@ Examples (run from ./server):
 """
 from __future__ import annotations
 import argparse, asyncio, json, os, time
-from typing import List, Tuple
+from typing import List, Tuple, cast
 import numpy as np
 import grpc
 import requests
@@ -75,13 +74,14 @@ def post_rest_infer(base_url: str, model_name: str, x: np.ndarray) -> Tuple[List
     obj = r.json()
     return obj["results"], elapsed, len(body)
 
-async def predict_grpc(addr: str, model_name: str, x: np.ndarray, deadline_sec: float = 60.0):
+async def predict_grpc(addr: str, model_name: str, x: np.ndarray, deadline_sec: float = 60.0, wait_for_ready: bool = True):
     req = pb.PredictRequest(model_name=model_name, input=numpy_to_request_tensor(x))
     req_bytes = req.SerializeToString()
+    # Single-port Envoy on 8080, plaintext gRPC over HTTP/2 (no TLS)
     async with grpc.aio.insecure_channel(addr) as channel:
         stub = pb_grpc.InferenceServiceStub(channel)
         t0 = time.perf_counter()
-        reply = await stub.Predict(req, timeout=deadline_sec)
+        reply = await stub.Predict(req, timeout=deadline_sec, wait_for_ready=wait_for_ready)
         elapsed = time.perf_counter() - t0
     rep_bytes = reply.SerializeToString()
     outs = [response_tensor_to_numpy(t) for t in reply.outputs]
@@ -94,19 +94,27 @@ def summarize_array(tag: str, arr: np.ndarray, n: int = 8) -> str:
             f"min={float(flat.min(initial=0)):.6g} max={float(flat.max(initial=0)):.6g} "
             f"sample={sample}")
 
-def compare_arrays(a: np.ndarray, b: np.ndarray, rtol: float, atol: float):
-    ok = np.allclose(a, b, rtol=rtol, atol=atol)
+def compare_arrays(a: np.ndarray, b: np.ndarray, rtol: float, atol: float) -> Tuple[bool, float, float]:
+    ok = bool(np.allclose(a, b, rtol=rtol, atol=atol))
     diff = np.abs(a - b)
+    max_abs = float(np.max(diff)) if diff.size else 0.0
     with np.errstate(divide="ignore", invalid="ignore"):
-        rel = diff / np.maximum(np.abs(a), np.abs(b))
-    return ok, float(diff.max(initial=0.0)), float(np.nanmax(rel))
+        denom = np.maximum(np.abs(a), np.abs(b))
+        rel = diff / denom
+    if rel.size == 0 or np.isnan(rel).all():
+        max_rel = 0.0
+    else:
+        max_rel_np = cast(np.floating, np.nanmax(rel))
+        max_rel = float(max_rel_np)
+    return ok, max_abs, max_rel
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="NEXON gRPC client (with optional REST parity check).")
-    p.add_argument("--grpc-addr", default=os.environ.get("NEXON_GRPC_ADDR", "127.0.0.1:50051"),
-                   help="gRPC address host:port")
-    p.add_argument("--rest-base", default=os.environ.get("NEXON_REST_BASE", "http://127.0.0.1:8000/inference/infer"),
-                   help="FastAPI base URL for inference")
+    p = argparse.ArgumentParser(description="NEXON gRPC client (single-port Envoy on 8080, with optional REST parity).")
+    # Defaults now point at Envoy (single port)
+    p.add_argument("--grpc-addr", default=os.environ.get("NEXON_GRPC_ADDR", "127.0.0.1:8080"),
+                   help="Target address for gRPC (Envoy single-port)")
+    p.add_argument("--rest-base", default=os.environ.get("NEXON_REST_BASE", "http://127.0.0.1:8080/inference/infer"),
+                   help="Envoy REST base URL for inference")
     p.add_argument("--model-name", required=True, help="Deployed model name (e.g., sigmoid.onnx)")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--preset", choices=["sigmoid", "gpt2"], help="Use a built-in test input")
@@ -141,7 +149,7 @@ def main() -> None:
     outs_grpc, t_grpc, grpc_req_sz, grpc_rep_sz = asyncio.run(
         predict_grpc(args.grpc_addr, args.model_name, x)
     )
-    print("Inference OK (gRPC). Decoded outputs:")
+    print("Inference OK (gRPC via Envoy:8080). Decoded outputs:")
     for i, arr in enumerate(outs_grpc):
         print(" ", summarize_array(f"[grpc output[{i}]]", arr))
     print(f"  gRPC time: {t_grpc*1000:.2f} ms | sizes: req={grpc_req_sz}B rep={grpc_rep_sz}B")
@@ -151,7 +159,7 @@ def main() -> None:
 
     results_json, t_rest, rest_rep_sz = post_rest_infer(args.rest_base, args.model_name, x)
     outs_rest = [np.asarray(results_json[0], dtype=outs_grpc[0].dtype)] if results_json else []
-    print("\nInference OK (REST). Decoded outputs:")
+    print("\nInference OK (REST via Envoy:8080). Decoded outputs:")
     for i, arr in enumerate(outs_rest):
         print(" ", summarize_array(f"[rest output[{i}]]", arr))
     rest_req_sz = len(json.dumps({"input": x.tolist()}).encode("utf-8"))

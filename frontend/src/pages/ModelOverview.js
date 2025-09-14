@@ -9,7 +9,7 @@ const ModelOverview = () => {
   const [notification, setNotification] = useState("");
 
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/allModels")
+    axios.get("http://127.0.0.1:8080/allModels")
       .then(response => {
         setModels(response.data);
       })
@@ -18,7 +18,7 @@ const ModelOverview = () => {
 
   const deleteModel = async (modelName, modelVersion) => {
   try {
-    const response = await axios.delete(`http://127.0.0.1:8000/deleteModel/${modelName}/${modelVersion}`
+    const response = await axios.delete(`http://127.0.0.1:8080/deleteModel/${modelName}/${modelVersion}`
     );
     setNotification(`✅ ${response.data.message}`);
 
@@ -37,7 +37,7 @@ const ModelOverview = () => {
   const undeployModel = async (modelName, modelVersion) => {
     try {
       // Send a request to the backend to undeploy the model
-      const response = await axios.put(`http://127.0.0.1:8000/deployment/undeploy/${modelName}`, {
+      const response = await axios.put(`http://127.0.0.1:8080/deployment/undeploy/${modelName}`, {
          model_name: modelName,
          model_version: modelVersion 
     });
