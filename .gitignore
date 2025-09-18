@@ -1,40 +1,47 @@
-# Envoy logs
-/server/envoy/logs/*
-!server/envoy/logs/.gitkeep
-
-# Local env & venv
-.env
-server/onnx_platform_env/
-
-# Local env & venv
-.env
-server/onnx_platform_env/
-server/onnx_platform_env/
-.venv/
+# Python
+*.pyc
+*.pyo
+*.pyd
+**/__pycache__/
+.Python
+env/
 venv/
-__pycache__/
-*.py[cod]
-*.so
-.idea/
-.vscode/
-.env
+ENV/
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
-# Local dev only
-server/onnx_platform_env/
-.idea/
-__pycache__/
-*.py[cod]
-*.so
-.env
+# FastAPI / logs
+*.log
+logs/
 
-# Local dev only
-server/onnx_platform_env/
-.idea/
-__pycache__/
-*.py[cod]
-*.so
-.env
+# OS-specific
+.DS_Store
 
-# Local env (do not commit)
+# Databases / local artifacts
+*.db
+
+# Env files (repo + server)
+.env
+.env.*
 server/.env
-*.pyi
+frontend/.env
+frontend/.env.*
+
+# Node / frontend
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.parcel-cache/
+frontend/.next/
+
+# IDE / editors
+.vscode/
+.idea/
+
+# Local virtualenv for server
+server/onnx_platform_env/
+
+# Envoy logs
+server/envoy/logs/

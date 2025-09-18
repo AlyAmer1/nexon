@@ -1,66 +1,90 @@
 # File: server/app/services/database.py
-# Purpose: Centralized MongoDB (Motor) + GridFS setup for both FastAPI and gRPC
-# Notes:
-#  - Auto-loads a shared .env (repo root or server/) if present.
-#  - Accepts multiple env var spellings for compatibility.
-#  - Exposes: client, db (and alias 'database'), models_collection, fs.
-
+# Centralized MongoDB (Motor) + GridFS setup shared by FastAPI (REST) and, if imported, other services.
 from __future__ import annotations
 
 import os
-from pathlib import Path
+import logging
+from typing import Optional
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 
-# --- BEGIN: unified .env loading (non-fatal if python-dotenv is missing) ---
+# --- Load .env for local dev (no effect in Docker unless env vars are missing) ---
 try:
-    from dotenv import load_dotenv  # pip install python-dotenv
-    _here = Path(__file__).resolve()
-    # Try repo root: .../nexon/.env  and server dir: .../nexon/server/.env
-    _candidates = []
-    if len(_here.parents) >= 4:
-        _candidates.append(_here.parents[3] / ".env")  # repo root
-    if len(_here.parents) >= 3:
-        _candidates.append(_here.parents[2] / ".env")  # server/
-
-    for _env in _candidates:
-        if _env and _env.exists():
-            load_dotenv(_env, override=False)
+    from dotenv import load_dotenv, find_dotenv  # pip install python-dotenv
+    # Do not override variables already provided by the shell / docker-compose
+    load_dotenv(find_dotenv(usecwd=True), override=False)
 except Exception:
-    # If dotenv isn't installed or any issue occurs, just proceed with OS env
-    pass
-# --- END: unified .env loading ---
+    pass  # python-dotenv is optional
 
-# --- BEGIN: standardized env keys with fallbacks ---
-MONGODB_URI = (
-        os.getenv("MONGODB_URI")
-        or os.getenv("MONGODB_URL")
-        or os.getenv("MONGO_URI")         # legacy
-        or "mongodb://localhost:27017"
+log = logging.getLogger("database")
+
+def _first_env(*keys: str, default: Optional[str] = None) -> Optional[str]:
+    """Return the first non-empty os.environ value among keys, else default."""
+    for k in keys:
+        v = os.getenv(k)
+        if v:
+            return v
+    return default
+
+# Prefer NEXON_* (compose), then common aliases, then a Docker-friendly default.
+MONGO_URI: str = _first_env(
+    "NEXON_MONGO_URI", "MONGODB_URI", "MONGODB_URL", "MONGO_URI",
+    default="mongodb://mongo:27017",  # service name in docker-compose
+)
+MONGO_DB: str = _first_env(
+    "NEXON_MONGO_DB", "MONGODB_DB", "MONGO_DB",
+    default="onnx_platform",
 )
 
-MONGODB_DB = (
-        os.getenv("MONGODB_DB")
-        or os.getenv("MONGO_DB")          # legacy
-        or "onnx_platform"                        # sensible default used in your data
-)
-# --- END: standardized env keys with fallbacks ---
+# Tunables with sane defaults
+SERVER_SELECTION_TIMEOUT_MS = int(os.getenv("MONGO_SERVER_SELECTION_TIMEOUT_MS", "10000"))
+UUID_REPRESENTATION = os.getenv("MONGO_UUID_REPRESENTATION", "standard")  # Motor/PyMongo option
 
-# Create Motor client and DB handle
-client: AsyncIOMotorClient = AsyncIOMotorClient(MONGODB_URI)
-db = client[MONGODB_DB]
+# Redact credentials in logs
+def _redact(uri: str) -> str:
+    # mongodb://user:pass@host:port/db -> mongodb://***:***@host:port/db
+    try:
+        if "@" in uri and "://" in uri:
+            scheme, rest = uri.split("://", 1)
+            auth_and_host = rest.split("@", 1)
+            if len(auth_and_host) == 2:
+                _, host = auth_and_host
+                return f"{scheme}://***:***@{host}"
+        return uri
+    except Exception:
+        return "<redacted>"
+
+# Single global client for the process
+client: AsyncIOMotorClient = AsyncIOMotorClient(
+    MONGO_URI,
+    serverSelectionTimeoutMS=SERVER_SELECTION_TIMEOUT_MS,
+    uuidRepresentation=UUID_REPRESENTATION,
+)
+db = client[MONGO_DB]
 database = db  # backward-compat alias
 
-# Collections / buckets used across the app
+# Collections / buckets
 models_collection = db["models"]
 fs: AsyncIOMotorGridFSBucket = AsyncIOMotorGridFSBucket(db)
 
+log.info("MongoDB connected (uri=%s, db=%s)", _redact(MONGO_URI), MONGO_DB)
+
+# Small helper you can reuse in /readyz
+async def ping() -> bool:
+    try:
+        await db.command("ping")
+        return True
+    except Exception as e:
+        log.warning("Mongo ping failed: %s", e)
+        return False
+
 __all__ = [
-    "MONGODB_URI",
-    "MONGODB_DB",
+    "MONGO_URI",
+    "MONGO_DB",
     "client",
     "db",
     "database",
     "models_collection",
     "fs",
+    "ping",
 ]
