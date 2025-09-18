@@ -1,0 +1,27 @@
+# Git
+.git
+.gitignore
+
+# Python bytecode/caches
+**/__pycache__/
+**/*.py[cod]
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+
+# OS
+.DS_Store
+
+# Frontend big dirs
+frontend/node_modules
+frontend/build
+frontend/dist
+frontend/.next
+frontend/.parcel-cache
+
+# Local venv
+server/onnx_platform_env
+
+# Any .env at repo root (avoid baking secrets)
+.env
+.env.*

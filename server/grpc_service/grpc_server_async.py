@@ -1,4 +1,3 @@
-# File: server/grpc_service/grpc_server_async.py
 # Async gRPC inference server using the shared orchestrator (parity with REST /infer/{model_name}).
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ from app.services.shared.orchestrator import (
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 
 load_dotenv()  # find server/.env when run from repo root or ./server
+
 
 # -------------------------- logging ------------------------------------------
 RESET   = "\x1b[0m"
@@ -106,6 +106,26 @@ async def _debug_log_deployed_names(models_collection):
         log.warning("Could not list deployed models: %s", e)
 
 
+# --------------------- optional: health-probe logging ------------------------
+class HealthLogInterceptor(grpc.aio.ServerInterceptor):
+    """
+    Logs incoming grpc.health.v1.Health checks when enabled via LOG_HEALTH.
+    Passive (no handler wrapping) for broad grpcio compatibility.
+    """
+    def __init__(self, enabled: bool, logger: logging.Logger):
+        self.enabled = enabled
+        self.logger = logger
+
+    async def intercept_service(self, continuation, handler_call_details):
+        handler = await continuation(handler_call_details)
+        if not self.enabled or handler is None:
+            return handler
+        m = handler_call_details.method
+        if m in ("/grpc.health.v1.Health/Check", "/grpc.health.v1.Health/Watch"):
+            self.logger.info("Health probe: %s", m)
+        return handler
+
+
 # --------------------------- gRPC service ------------------------------------
 class InferenceService(pb_grpc.InferenceServiceServicer):
     """
@@ -158,7 +178,6 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
 
             # ---- orchestrated inference (covers: resolve, cache, dtype/shape/name) ----
             try:
-                # tensor_name is optional; if provided, orchestrator enforces equality with input[0].name
                 outs = await self._orch.run_from_bytes(
                     model_name=model_name,
                     dims=dims,
@@ -178,7 +197,6 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
                 context.set_details(str(e))
                 return pb.PredictReply()
             except InvalidInputError as e:
-                # Covers: unsupported dtype, size mismatch, shape mismatch, name mismatch, bad cast
                 status = grpc.StatusCode.INVALID_ARGUMENT
                 reason = str(e)
                 context.set_code(status)
@@ -214,7 +232,7 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
                 return pb.PredictReply()
 
             reply_t = pb.ResponseTensor()
-            reply_t.name = ""  # optional; clients generally don't require the name
+            reply_t.name = ""
             reply_t.dims.extend(list(out_arr.shape))
             reply_t.tensor_content = out_arr.tobytes(order="C")
             reply_t.data_type = proto_dt
@@ -247,10 +265,18 @@ async def serve():
 
     max_recv = int(os.environ.get("GRPC_MAX_RECV_BYTES", 32 * 1024 * 1024))
     max_send = int(os.environ.get("GRPC_MAX_SEND_BYTES", 32 * 1024 * 1024))
-    server = grpc.aio.server(options=[
-        ("grpc.max_receive_message_length", max_recv),
-        ("grpc.max_send_message_length",    max_send),
-    ])
+
+    # Opt-in health probe logging via env
+    log_health = os.environ.get("LOG_HEALTH", "0").lower() in ("1", "true", "yes", "on")
+    interceptors = [HealthLogInterceptor(True, log)] if log_health else []
+
+    server = grpc.aio.server(
+        options=[
+            ("grpc.max_receive_message_length", max_recv),
+            ("grpc.max_send_message_length",    max_send),
+        ],
+        interceptors=interceptors,
+    )
 
     # Register inference service
     pb_grpc.add_InferenceServiceServicer_to_server(
@@ -260,9 +286,50 @@ async def serve():
 
     # Health service
     health_servicer = health.HealthServicer()
-    health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
-    health_servicer.set("inference.InferenceService", health_pb2.HealthCheckResponse.SERVING)
+    # Start conservatively; readiness monitor will flip to SERVING when Mongo is reachable
+    health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
+    health_servicer.set("inference.InferenceService", health_pb2.HealthCheckResponse.NOT_SERVING)
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+
+    # --- Readiness monitor: flip health based on Mongo ping ---
+    async def readiness_monitor(models_collection, hs: health.HealthServicer):
+        prev = None
+        interval = int(os.environ.get("READINESS_INTERVAL", "5"))
+        while True:
+            try:
+                await models_collection.database.command("ping")
+                state = health_pb2.HealthCheckResponse.SERVING
+            except Exception:
+                state = health_pb2.HealthCheckResponse.NOT_SERVING
+
+            if state != prev:
+                label = "SERVING" if state == health_pb2.HealthCheckResponse.SERVING else "NOT_SERVING"
+                log.info("Readiness (gRPC): %s", label)
+                prev = state
+
+            try:
+                hs.set("", state)
+                hs.set("inference.InferenceService", state)
+            except Exception:
+                pass
+
+            await asyncio.sleep(interval)
+
+    ready_task = asyncio.create_task(readiness_monitor(models_collection, health_servicer))
+
+    # Optional: enable server reflection if available & requested
+    try:
+        if os.environ.get("ENABLE_REFLECTION", "0").lower() in ("1", "true", "yes", "on"):
+            from grpc_reflection.v1alpha import reflection  # type: ignore
+            service_names = [
+                "inference.InferenceService",
+                health.SERVICE_NAME,
+                reflection.SERVICE_NAME,
+            ]
+            reflection.enable_server_reflection(service_names, server)
+            log.info("gRPC reflection enabled.")
+    except Exception as e:
+        log.warning("Reflection not enabled: %s", e)
 
     addr = os.environ.get("GRPC_BIND", "[::]:50051")
     server.add_insecure_port(addr)
@@ -279,14 +346,12 @@ async def serve():
             shutdown_event.set()
         else:
             log.warning("Second %s received. Forcing exit.", sig.name)
-            # Hard exit to avoid event-loop 'closed' stack traces
             os._exit(1)
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, functools.partial(_begin_shutdown, sig))
         except NotImplementedError:
-            # Fallback (Windows): last resort
             signal.signal(sig, lambda *_: _begin_shutdown(sig))
 
     # ---- start & run ----
@@ -308,18 +373,18 @@ async def serve():
         except Exception:
             pass
 
-        # Cancel any background tasks we started
-        dbg_task.cancel()
-        try:
-            await dbg_task
-        except asyncio.CancelledError:
-            pass
+        # Cancel background tasks
+        for task in (dbg_task, ready_task):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
         grace = float(os.environ.get("GRPC_GRACE_SECONDS", "5"))
         await server.stop(grace)
         await server.wait_for_termination()
     finally:
-        # Close DB client while loop is still alive to avoid PyMongo threadpool noise
         try:
             client.close()
         except Exception:
