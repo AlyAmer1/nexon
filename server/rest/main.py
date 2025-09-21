@@ -13,9 +13,9 @@ from app.services.deployment import app as deployment_app
 from app.services.upload import app as upload_app
 
 # Shared DB handles (Motor + GridFS)
-from app.services.database import fs, models_collection
+from shared.database import fs, models_collection
 # If you want to close the Motor client on shutdown (recommended):
-from app.services.database import client as mongo_client
+from shared.database import client as mongo_client
 
 
 # -----------------------------------------------------------------------------

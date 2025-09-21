@@ -1,7 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from pydantic import BaseModel
 from datetime import datetime
-from .database import fs, models_collection
+from shared.database import fs, models_collection
 from bson import ObjectId
 import math
 import psutil

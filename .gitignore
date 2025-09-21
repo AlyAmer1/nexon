@@ -1,4 +1,6 @@
+# ------------------------------
 # Python
+# ------------------------------
 *.pyc
 *.pyo
 *.pyd
@@ -12,36 +14,52 @@ ENV/
 .pytest_cache/
 .ruff_cache/
 
-# FastAPI / logs
-*.log
-logs/
-
+# ------------------------------
 # OS-specific
+# ------------------------------
 .DS_Store
 
+# ------------------------------
 # Databases / local artifacts
+# ------------------------------
 *.db
 
-# Env files (repo + server)
+# ------------------------------
+# Environment files
+# ------------------------------
 .env
 .env.*
 server/.env
 frontend/.env
 frontend/.env.*
 
+# ------------------------------
 # Node / frontend
+# ------------------------------
 frontend/node_modules/
 frontend/build/
 frontend/dist/
 frontend/.parcel-cache/
 frontend/.next/
 
+# ------------------------------
 # IDE / editors
+# ------------------------------
 .vscode/
 .idea/
 
+# ------------------------------
 # Local virtualenv for server
+# ------------------------------
 server/onnx_platform_env/
 
-# Envoy logs
-server/envoy/logs/
+# ------------------------------
+# Logs
+# - Ignore log files globally
+# - Keep the Envoy logs directory present in the repo with .gitkeep
+# ------------------------------
+*.log
+
+# Keep the Envoy logs directory structure but ignore its contents
+ops/envoy/logs/*
+!ops/envoy/logs/.gitkeep

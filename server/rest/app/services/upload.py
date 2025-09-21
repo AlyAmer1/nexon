@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from datetime import datetime
-from .database import fs, models_collection
+from shared.database import fs, models_collection
 
 import math
 

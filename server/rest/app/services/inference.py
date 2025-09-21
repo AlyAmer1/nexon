@@ -7,10 +7,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 # Project DB handles (Motor GridFS bucket + models collection)
-from .database import fs, models_collection
+from shared.database import fs, models_collection
 
 # Shared inference orchestrator (unifies REST & gRPC behavior)
-from .shared.orchestrator import (
+from shared.orchestrator import (
     InferenceOrchestrator,
     InvalidInputError,
     ModelNotFoundError,

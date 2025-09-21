@@ -3,7 +3,7 @@ services:
     image: mongo:6
     container_name: nexon-mongo
     ports: ["27017:27017"]
-    volumes: [ "mongo_data:/data/db" ]
+    volumes: ["mongo_data:/data/db"]
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 })"]
       interval: 10s
@@ -13,20 +13,20 @@ services:
   rest:
     build:
       context: ./server
-      dockerfile: Dockerfile.rest
+      dockerfile: rest/Dockerfile
     container_name: nexon-rest
+    env_file: ./.env
     environment:
       NEXON_MONGO_URI: mongodb://mongo:27017
       NEXON_MONGO_DB: onnx_platform
       LOG_HEALTH: "1"
-    env_file: ./.env
+      PYTHONPATH: /app/server
     depends_on:
       mongo:
         condition: service_healthy
     ports: ["8000:8000"]
     healthcheck:
-      test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz'); print('ok')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz'); print('ok')"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -34,8 +34,9 @@ services:
   grpc:
     build:
       context: ./server
-      dockerfile: Dockerfile.grpc
+      dockerfile: grpc_service/Dockerfile
     container_name: nexon-grpc
+    env_file: ./.env
     environment:
       NEXON_MONGO_URI: mongodb://mongo:27017
       NEXON_MONGO_DB: onnx_platform
@@ -43,13 +44,13 @@ services:
       GRPC_MAX_RECV_BYTES: 67108864
       GRPC_MAX_SEND_BYTES: 67108864
       LOG_HEALTH: "1"
-    env_file: ./.env
+      PYTHONPATH: /app/server
     depends_on:
       mongo:
         condition: service_healthy
-    ports: ["50051:50051"]
+    ports: [ "50051:50051" ]
     healthcheck:
-      test: ["CMD", "python", "-m", "grpc_service.grpc_healthcheck", "127.0.0.1:50051", ""]
+      test: [ "CMD", "python", "-m", "grpc_service.grpc_healthcheck", "127.0.0.1:50051", "" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -59,8 +60,8 @@ services:
     container_name: nexon-envoy
     command: ["-c", "/etc/envoy/envoy.yaml", "--mode", "serve", "--log-level", "info"]
     volumes:
-      - ./server/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
-      - ./server/envoy/logs:/var/log/envoy
+      - ./ops/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./ops/envoy/logs:/var/log/envoy
     depends_on:
       rest:
         condition: service_healthy

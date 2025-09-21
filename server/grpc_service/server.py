@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import os
+import sys
 import asyncio
 import logging
 import time
@@ -10,18 +11,19 @@ import numpy as np
 import grpc
 import signal
 import functools
+from typing import Any
 
 from dotenv import load_dotenv
 
-# Generated stubs (run as: python -m grpc_service.grpc_server_async)
-import inference_pb2 as pb
-import inference_pb2_grpc as pb_grpc
+# Generated stubs (run as: python -m grpc_service.server)
+from grpc_service.generated import inference_pb2 as pb
+from grpc_service.generated import inference_pb2_grpc as pb_grpc
 
 # gRPC health service
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
 # Shared orchestrator (REST + gRPC)
-from app.services.shared.orchestrator import (
+from shared.orchestrator import (
     InferenceOrchestrator,
     ModelNotFoundError,
     ModelNotDeployedError,
@@ -116,12 +118,13 @@ class HealthLogInterceptor(grpc.aio.ServerInterceptor):
         self.enabled = enabled
         self.logger = logger
 
-    async def intercept_service(self, continuation, handler_call_details):
+    async def intercept_service(self, continuation: Any, handler_call_details: Any):
         handler = await continuation(handler_call_details)
         if not self.enabled or handler is None:
             return handler
-        m = handler_call_details.method
-        if m in ("/grpc.health.v1.Health/Check", "/grpc.health.v1.Health/Watch"):
+        # Some type stubs don't expose .method; use getattr to keep IDE happy.
+        m = getattr(handler_call_details, "method", None)
+        if isinstance(m, str) and m in ("/grpc.health.v1.Health/Check", "/grpc.health.v1.Health/Watch"):
             self.logger.info("Health probe: %s", m)
         return handler
 
@@ -253,6 +256,13 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
 
 
 # ------------------------------ server boot ----------------------------------
+def _hard_exit(code: int = 1) -> None:
+    """Force process exit without cleanup; fall back to sys.exit if unavailable."""
+    try:
+        os._exit(code)  # type: ignore[attr-defined]
+    except Exception:
+        sys.exit(code)
+
 async def serve():
     """Start the async gRPC server and shut down cleanly on first SIGINT/SIGTERM."""
     mongo_uri = os.environ.get("NEXON_MONGO_URI", "mongodb://localhost:27017")
@@ -321,13 +331,11 @@ async def serve():
     try:
         if os.environ.get("ENABLE_REFLECTION", "0").lower() in ("1", "true", "yes", "on"):
             from grpc_reflection.v1alpha import reflection  # type: ignore
-            service_names = [
-                "inference.InferenceService",
-                health.SERVICE_NAME,
-                reflection.SERVICE_NAME,
-            ]
+            # Use the fully-qualified service name from the generated descriptor
+            fq_service = pb.DESCRIPTOR.services_by_name["InferenceService"].full_name
+            service_names = [fq_service, health.SERVICE_NAME, reflection.SERVICE_NAME]
             reflection.enable_server_reflection(service_names, server)
-            log.info("gRPC reflection enabled.")
+            log.info("gRPC reflection enabled for: %s", service_names[0])
     except Exception as e:
         log.warning("Reflection not enabled: %s", e)
 
@@ -346,13 +354,13 @@ async def serve():
             shutdown_event.set()
         else:
             log.warning("Second %s received. Forcing exit.", sig.name)
-            os._exit(1)
+            _hard_exit(1)
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
+    for sig_ in (signal.SIGINT, signal.SIGTERM):
         try:
-            loop.add_signal_handler(sig, functools.partial(_begin_shutdown, sig))
+            loop.add_signal_handler(sig_, functools.partial(_begin_shutdown, sig_))
         except NotImplementedError:
-            signal.signal(sig, lambda *_: _begin_shutdown(sig))
+            signal.signal(sig_, lambda *_: _begin_shutdown(sig_))
 
     # ---- start & run ----
     await server.start()
