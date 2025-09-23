@@ -15,9 +15,9 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-# Generated stubs (run as: python -m grpc_service.server)
-from grpc_service.generated import inference_pb2 as pb
-from grpc_service.generated import inference_pb2_grpc as pb_grpc
+# Generated stubs (top-level, installed via wheel)
+import inference_pb2 as pb
+import inference_pb2_grpc as pb_grpc
 
 # gRPC health service
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
@@ -296,9 +296,11 @@ async def serve():
 
     # Health service
     health_servicer = health.HealthServicer()
+    # Fully-qualified service name from generated descriptors (avoids hardcode drift)
+    fq_service = pb.DESCRIPTOR.services_by_name["InferenceService"].full_name
     # Start conservatively; readiness monitor will flip to SERVING when Mongo is reachable
     health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
-    health_servicer.set("inference.InferenceService", health_pb2.HealthCheckResponse.NOT_SERVING)
+    health_servicer.set(fq_service, health_pb2.HealthCheckResponse.NOT_SERVING)
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
 
     # --- Readiness monitor: flip health based on Mongo ping ---
@@ -319,7 +321,7 @@ async def serve():
 
             try:
                 hs.set("", state)
-                hs.set("inference.InferenceService", state)
+                hs.set(fq_service, state)
             except Exception:
                 pass
 
@@ -332,7 +334,6 @@ async def serve():
         if os.environ.get("ENABLE_REFLECTION", "0").lower() in ("1", "true", "yes", "on"):
             from grpc_reflection.v1alpha import reflection  # type: ignore
             # Use the fully-qualified service name from the generated descriptor
-            fq_service = pb.DESCRIPTOR.services_by_name["InferenceService"].full_name
             service_names = [fq_service, health.SERVICE_NAME, reflection.SERVICE_NAME]
             reflection.enable_server_reflection(service_names, server)
             log.info("gRPC reflection enabled for: %s", service_names[0])
@@ -377,7 +378,7 @@ async def serve():
         # Advertise NOT_SERVING so Envoy drains before we close connections
         try:
             health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
-            health_servicer.set("inference.InferenceService", health_pb2.HealthCheckResponse.NOT_SERVING)
+            health_servicer.set(fq_service, health_pb2.HealthCheckResponse.NOT_SERVING)
         except Exception:
             pass
 

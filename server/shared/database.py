@@ -1,5 +1,5 @@
-# File: server/app/services/database.py
-# Centralized MongoDB (Motor) + GridFS setup shared by FastAPI (REST) and, if imported, other services.
+# File: server/shared/database.py
+# Centralized MongoDB (Motor) + GridFS setup shared by FastAPI (REST) and gRPC.
 from __future__ import annotations
 
 import os

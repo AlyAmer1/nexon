@@ -20,7 +20,6 @@ services:
       NEXON_MONGO_URI: mongodb://mongo:27017
       NEXON_MONGO_DB: onnx_platform
       LOG_HEALTH: "1"
-      PYTHONPATH: /app/server
     depends_on:
       mongo:
         condition: service_healthy
@@ -44,7 +43,6 @@ services:
       GRPC_MAX_RECV_BYTES: 67108864
       GRPC_MAX_SEND_BYTES: 67108864
       LOG_HEALTH: "1"
-      PYTHONPATH: /app/server
     depends_on:
       mongo:
         condition: service_healthy

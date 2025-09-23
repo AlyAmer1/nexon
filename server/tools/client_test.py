@@ -59,8 +59,8 @@ import numpy as np
 import grpc
 import requests
 
-from grpc_service.generated import inference_pb2 as pb
-from grpc_service.generated import inference_pb2_grpc as pb_grpc
+import inference_pb2 as pb
+import inference_pb2_grpc as pb_grpc
 
 PB_TO_NP = {
     pb.DT_FLOAT32: np.float32,

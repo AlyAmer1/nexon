@@ -25,3 +25,8 @@ server/onnx_platform_env
 # Any .env at repo root (avoid baking secrets)
 .env
 .env.*
+
+# Generated artifacts
+stubs/
+**/*_pb2.py
+**/*_pb2_grpc.py
