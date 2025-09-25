@@ -277,7 +277,7 @@ async def serve():
     max_send = int(os.environ.get("GRPC_MAX_SEND_BYTES", 32 * 1024 * 1024))
 
     # Opt-in health probe logging via env
-    log_health = os.environ.get("LOG_HEALTH", "0").lower() in ("1", "true", "yes", "on")
+    log_health = os.environ.get("LOG_HEALTH", "1").lower() in ("1", "true", "yes", "on")
     interceptors = [HealthLogInterceptor(True, log)] if log_health else []
 
     server = grpc.aio.server(

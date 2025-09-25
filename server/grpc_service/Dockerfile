@@ -13,7 +13,6 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 COPY grpc_service/protos grpc_service/protos
 COPY grpc_service/gen_protos_and_build_stubs.sh tools/gen_protos_and_build_stubs.sh
 
-# Generate stubs (.py + .pyi) and build the wheel
 RUN bash tools/gen_protos_and_build_stubs.sh
 
 # ---------- Stage 2: runtime ----------
@@ -32,7 +31,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 COPY --from=stubs /app/server/stubs/dist /tmp/stubs/dist
 RUN pip install --no-cache-dir /tmp/stubs/dist/*.whl
 
-# HARD GUARANTEE: fail build if stubs not importable
+# Fail build if stubs can’t be imported
 RUN python - <<'PY'
 import sys
 print("PYTHON:", sys.executable)
@@ -41,10 +40,9 @@ import inference_pb2, inference_pb2_grpc
 print("stubs OK:", inference_pb2.__file__, inference_pb2_grpc.__file__)
 PY
 
-# Copy code last
+# App code last (better layer caching)
 COPY . /app/server
 
-# Non-root user + clean env
 RUN useradd -m appuser
 ENV PYTHONUNBUFFERED=1
 USER appuser

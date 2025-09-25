@@ -20,7 +20,7 @@ from shared.database import client as mongo_client
 # -----------------------------------------------------------------------------
 # Logging: suppress /healthz and /readyz access logs unless LOG_HEALTH=1
 # -----------------------------------------------------------------------------
-LOG_HEALTH = os.getenv("LOG_HEALTH", "0").lower() in ("1", "true", "yes", "on")
+LOG_HEALTH = os.getenv("LOG_HEALTH", "1").lower() in ("1", "true", "yes", "on")
 
 class _HealthAccessFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:

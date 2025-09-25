@@ -1,0 +1,4 @@
+-r server/requirements.txt
+grpcio-tools==1.75.0
+mypy-protobuf==3.6.0
+tomli-w==1.0.0

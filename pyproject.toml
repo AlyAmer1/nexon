@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexon"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "NEXON: ONNX deployment platform (REST + gRPC + Envoy)"
+readme = "README.md"
+
+[tool.setuptools]
+package-dir = {"" = "server"}
+
+[tool.setuptools.packages.find]
+where = ["server"]
+include = ["rest*", "grpc_service*", "shared*", "tools*"]

@@ -56,9 +56,9 @@ services:
   envoy:
     image: envoyproxy/envoy:v1.31.2
     container_name: nexon-envoy
-    command: ["-c", "/etc/envoy/envoy.yaml", "--mode", "serve", "--log-level", "info"]
+    command: ["-c", "/etc/envoy/envoy.compose.yaml", "--mode", "serve", "--log-level", "info"]
     volumes:
-      - ./ops/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./ops/envoy/envoy.compose.yaml:/etc/envoy/envoy.compose.yaml:ro
       - ./ops/envoy/logs:/var/log/envoy
     depends_on:
       rest:
