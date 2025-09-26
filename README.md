@@ -68,13 +68,20 @@ docker compose logs -f grpc
 docker compose logs -f envoy
 ```
 
+> **Developer note (IDE imports while using Docker)**
+> The gRPC stubs (`inference_pb2*`) are generated **inside the images**. Your local IDE may still show unresolved imports because it isn’t using the container’s interpreter.
+> - Quick fix for editor-only resolution: run `make dev-bootstrap` once to build/install the stubs wheel into a local `.venv/`, then point your IDE at `.venv/bin/python`.
+> - **PyCharm/IntelliJ:** Settings → Project: Python Interpreter → Add → Existing → select `.venv/bin/python`
+> - **VS Code:** Command Palette → “Python: Select Interpreter” → choose `.venv`
+> (No change is needed to run via Docker—this is just for your editor’s IntelliSense.)
+
 Note: gRPC stubs are generated during the Docker build into `/app/server/stubs/`, packaged as a wheel, and installed into the image. They are not committed to git.
 
 ---
 
 ## 🧱 Local Development (optional)
 
-This prepares a local virtualenv, generates protobuf/gRPC stubs, installs the stubs wheel, and installs the app in editable mode—so IDEs resolve `inference_pb2*` without warnings.
+This prepares a local virtualenv, generates protobuf/gRPC stubs, installs the stubs wheel, and installs the app in editable mode - so IDEs resolve `inference_pb2*` without warnings.
 
 ### 1) One-time dev setup
 ```bash
@@ -118,6 +125,16 @@ npm install
 npm start
 # The UI calls REST endpoints (via Envoy on :8080).
 ```
+
+---
+
+> **🛠️ Developer note (IDE imports)**
+> The gRPC stubs (`inference_pb2*`) are generated **inside the images**. Your local IDE may still show unresolved imports because it isn’t using the container’s interpreter.
+> - Quick fix for editor-only resolution: After running `make dev-bootstrap` once to build/install the stubs wheel into a local `.venv/`, then point your IDE at `.venv/bin/python`.
+> - **PyCharm/IntelliJ:** Settings → Project: Python Interpreter → Add → Existing → select `.venv/bin/python`
+> - **VS Code:** Command Palette → “Python: Select Interpreter” → choose `.venv`
+    > (No change is needed to run via Docker—this is just for your editor’s IntelliSense.)
+
 
 ---
 

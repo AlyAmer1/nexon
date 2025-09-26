@@ -42,10 +42,17 @@ build-backend = "setuptools.build_meta"
 name = "nexon-protos"
 version = "0.1.0"
 requires-python = ">=3.11"
-description = "gRPC/Protobuf stubs for NEXON (generated at build time)"
+description = "Protobuf/gRPC stubs for NEXON (generated at build time)"
 
 [tool.setuptools]
+# These are top-level modules like "inference_pb2"
 py-modules = []
+# Also ship the *.pyi type stubs so IDEs can resolve symbols
+include-package-data = true
+
+# Install *.pyi files at site-packages root (next to the py-modules)
+[tool.setuptools.data-files]
+"" = ["*.pyi"]
 TOML
 
 # Inject the discovered modules

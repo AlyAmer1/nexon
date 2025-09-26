@@ -26,25 +26,34 @@ WHEEL_GLOB   := server/stubs/dist/*.whl
 
 help:
 	@echo "Targets:"
-	@echo "  make dev-bootstrap  - Create .env (if missing), venv, install deps, generate stubs, install wheel, -e ., run checks"
-	@echo "  make ide-ready      - Alias for dev-bootstrap"
-	@echo "  make docker-up      - Build and start all services via docker-compose"
-	@echo "  make docker-down    - Stop services"
-	@echo "  make clean          - Remove local venv and generated stubs"
-	@echo "  make dist-clean     - Also remove built Docker images"
-	@echo "  make init-env       - Create a default .env at repo root if missing"
-	@echo "  make check-versions - Print grpc/grpcio-tools/protobuf versions"
-	@echo "  make import-check   - Sanity import check (inference_pb2*, rest.main, shared.database)"
+	@echo "  make dev-bootstrap    - Create .env, venv, install deps, generate stubs, install wheel, -e ., checks"
+    @echo "    (afterwards: select .venv in your IDE or use make run-rest/run-grpc)"
+	@echo "  make ide-ready        - Alias for dev-bootstrap"
+	@echo "  make docker-up        - Build and start all services via docker-compose"
+	@echo "  make docker-down      - Stop services"
+	@echo "  make clean            - Remove local venv and generated stubs"
+	@echo "  make dist-clean       - Also remove built Docker images"
+	@echo "  make init-env         - Create a default .env at repo root if missing"
+	@echo "  make check-versions   - Print grpc/grpcio-tools/protobuf versions"
+	@echo "  make import-check     - Sanity import check (inference_pb2*, rest.main, shared.database)"
 	@echo "  --- Local run helpers (no venv activation needed) ---"
-	@echo "  make run-rest       - Start FastAPI on :8000"
-	@echo "  make run-grpc       - Start gRPC server on :50051"
-	@echo "  make run-envoy-dev  - Start Envoy (local) on :8080"
+	@echo "  make run-rest         - Start FastAPI on :8000"
+	@echo "  make run-grpc         - Start gRPC server on :50051"
+	@echo "  make run-envoy-dev    - Start Envoy (local) on :8080"
 	@echo "  make run-mongo-docker - Start MongoDB in Docker on :27017"
 	@echo "  make run-mongo-native - Start native mongod (needs MongoDB installed)"
 
 # One-shot for reviewers/supervisors
 dev-bootstrap: init-env venv dev-deps proto install-stubs install-editable import-check check-versions
-ide-ready: dev-bootstrap
+	@printf "\n\033[1;32mNEXON local dev environment is ready.\033[0m\n"
+	@echo "Next steps (choose one):"
+	@echo "  1) Run directly via Make (no activation):"
+	@echo "       make run-rest    # FastAPI on :8000"
+	@echo "       make run-grpc    # gRPC on :50051"
+	@echo "       make run-envoy-dev"
+	@echo "  2) Or point your IDE to the project venv so imports resolve:"
+	@echo "       • PyCharm/IntelliJ: Settings → Project: Python Interpreter → Add → Existing → .venv/bin/python"
+	@echo "       • VS Code: Command Palette → Python: Select Interpreter → pick .venv"
 
 # 0) Create .env if missing (prefer copying .env.example; else write defaults)
 init-env:

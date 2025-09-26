@@ -69,4 +69,4 @@ ops/envoy/logs/*
 server/stubs/
 
 # Build metadata (editable install)
-server/*.egg-info/
+*.egg-info/
