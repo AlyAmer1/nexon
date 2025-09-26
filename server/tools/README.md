@@ -49,3 +49,25 @@ Notes:
 --deadline <sec>               gRPC per-call deadline (default 60s)
 ```
 
+
+## 🛠 Troubleshooting
+
+- **"No module named `inference_pb2`" in IDE**
+    - Run `make dev-bootstrap` once. It generates stubs and installs the `nexon-protos` wheel locally so editors resolve imports.
+
+- **grpc/grpcio-tools mismatch (e.g., generated code expects >=1.75.0)**
+    - Docker: `docker compose build --no-cache && docker compose up -d`.
+    - Local: `make dev-bootstrap` (installs matching versions from `requirements-dev.txt`).
+
+- **Changed `.proto` not reflected**
+    - Docker: rebuild with `--no-cache`.
+    - Local: `make dev-bootstrap` (re-generates stubs and re-installs the wheel).
+
+- **Envoy shows "no healthy upstream"**
+    - Local: start REST (`:8000`) and gRPC (`:50051`) before running `envoy.dev.yaml`.
+    - Docker: both services must be healthy; check with `docker compose ps` and the service logs.
+
+- **Health probes not visible**
+    - Health logging is enabled by default (`LOG_HEALTH=1` in `.env`). To silence, set `LOG_HEALTH=0`.
+
+---

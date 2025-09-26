@@ -1,32 +1,49 @@
-# Git
+# --- VCS ---
 .git
 .gitignore
 
-# Python bytecode/caches
+# --- Dev containers / CI / docs (not needed inside images) ---
+.devcontainer/
+.github/
+docs/
+examples/
+
+# --- Python bytecode & caches ---
 **/__pycache__/
 **/*.py[cod]
 **/.mypy_cache
 **/.pytest_cache
 **/.ruff_cache
 
-# OS
+# --- OS junk ---
 .DS_Store
 
-# Frontend big dirs
-frontend/node_modules
-frontend/build
-frontend/dist
-frontend/.next
-frontend/.parcel-cache
-
-# Local venv
+# --- Virtualenvs (local only) ---
+.venv
 server/onnx_platform_env
 
-# Any .env at repo root (avoid baking secrets)
+# --- Node / frontend artifacts (we don't need UI in backend images) ---
+frontend/
+# (If you ever need frontend in images, remove the line above and keep these:)
+# frontend/node_modules
+# frontend/build
+# frontend/dist
+# frontend/.next
+# frontend/.parcel-cache
+
+# --- Ops assets not needed in backend images ---
+ops/
+# (Envoy container uses bind-mount from host; no need to copy ops/ into REST/GRPC images.)
+
+# --- Environment files (use .env.example in git) ---
 .env
 .env.*
 
-# Generated artifacts
-stubs/
+# --- Generated artifacts (we build wheel in-container) ---
+server/stubs/
 **/*_pb2.py
 **/*_pb2_grpc.py
+
+# --- Logs ---
+*.log
+ops/envoy/logs/

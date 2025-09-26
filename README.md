@@ -1,22 +1,24 @@
 # NEXON
 
-The **ONNX Deployment Platform** NEXON is a web-based application for uploading, deploying, and running inference on ONNX models.
-
-This research extension adds a gRPC service with feature parity to REST, an Envoy gateway, shared orchestration & model cache, health/readiness probes, and a reproducible stubs build (protobuf/gRPC packaged as a wheel).
-
+**NEXON** is an AI model deployment platform for **ONNX** models. It serves feature-parity **inference over REST and gRPC** behind an **Envoy** gateway. Models are stored in **MongoDB GridFS**, and both services share a single **inference orchestrator** with an **in-process LRU/TTL session cache**. All services are containerized and health-checked for reliable bring-up, benchmarking, and grading.
 ## 🚀 Features
-- Upload, deploy, list, and delete ONNX models (MongoDB + GridFS).
+- Upload, deploy, list, and delete ONNX models.
 - Inference via REST and gRPC with identical request/response semantics.
+- Inference endpoints
+  - REST: `POST /inference/infer/{model_name}`
+  - gRPC: `InferenceService/Predict`
 - Envoy front door (single :8080 for REST + gRPC), admin UI on :9901.
 - Health: REST `/healthz` (liveness), `/readyz` (readiness) and gRPC Health service.
-- Frontend (REST-only): the React UI invokes REST endpoints (it does not call gRPC directly) and typically reaches the backend through Envoy on :8080.
+- Frontend (REST-only): the React UI invokes REST endpoints and reaches the backend through Envoy on :8080.
 - Shared components:
   - [Database (Motor + GridFS)](server/shared/database.py)
   - [Inference Orchestrator](server/shared/orchestrator.py)
-  - [In-process Model Cache](server/shared/model_cache.py) (ONNX Runtime InferenceSession, LRU/TTL)
-- Reproducible stubs: proto stubs generated at build time → packaged as a wheel → installed.
+  - [In-process Model Cache](server/shared/model_cache.py)
+- Reproducible stubs: 
+proto stubs generated at build time → packaged as a wheel → installed.
 - Modern, modular Python layout suitable for benchmarking and coursework.
-- Production-ready Docker containerization with health checks, service dependencies, and multi-stage builds for gRPC stubs.
+- Docker containerization for one-command bring-up, and multi-stage builds for
+  gRPC stubs.
 
 ---
 
@@ -37,24 +39,24 @@ Create `.env` at the repo root (from `.env.example`, or let make create one with
 make init-env
 ```
 
-Example contents:
-```bash
-# ./.env
-NEXON_MONGO_URI=mongodb://mongo:27017
-NEXON_MONGO_DB=onnx_platform
-LOG_HEALTH=1
-# Optional (development): ENABLE_REFLECTION=1
-```
+
+Important keys:
+- `NEXON_MONGO_URI`: Mongo connection string (Docker default: `mongodb://mongo:27017`).
+- `NEXON_MONGO_DB`: database name (default: `onnx_platform`).
+- `LOG_HEALTH`: `1` logs health probes; `0` suppresses noisy health access logs.
+- `ENABLE_REFLECTION`: `1` to enable gRPC reflection (dev convenience).
+- `GRPC_BIND`, `GRPC_MAX_RECV_BYTES`, `GRPC_MAX_SEND_BYTES`: advanced gRPC tuning.
 
 ### **3. Build & Start**
+
 ```bash
 docker compose up -d --build
 ```
 
 ### **4. What's Running**
 - Envoy (gateway): `http://localhost:8080`
-- REST backend (direct): `http://localhost:8000` (HTTP/1.1)
-- gRPC backend (direct): `localhost:50051` (HTTP/2)
+- REST service (direct): `http://localhost:8000` (HTTP/1.1)
+- gRPC service (direct): `localhost:50051` (HTTP/2)
 - MongoDB: `localhost:27017`
 - Envoy admin: `http://localhost:9901`
 
@@ -140,47 +142,6 @@ nexon/
 
 ---
 
-## 🔧 Configuration
-
-Environment file: `.env` at repo root (not committed; `.env.example` provided).
-
-Important keys:
-- `NEXON_MONGO_URI`: Mongo connection string (Docker default: `mongodb://mongo:27017`).
-- `NEXON_MONGO_DB`: database name (default: `onnx_platform`).
-- `LOG_HEALTH`: `1` logs health probes; `0` suppresses noisy health access logs.
-- `ENABLE_REFLECTION`: `1` to enable gRPC reflection (dev convenience).
-- `GRPC_BIND`, `GRPC_MAX_RECV_BYTES`, `GRPC_MAX_SEND_BYTES`: advanced gRPC tuning.
-
-Default ports:
-- Envoy (gateway): `8080`
-- Envoy admin: `9901`
-- REST backend: `8000`
-- gRPC backend: `50051`
-- MongoDB: `27017`
-
----
-
-## 🛠 Troubleshooting
-
-- **"No module named `inference_pb2`" in IDE**
-  - Run `make dev-bootstrap` once. It generates stubs and installs the `nexon-protos` wheel locally so editors resolve imports.
-
-- **grpc/grpcio-tools mismatch (e.g., generated code expects >=1.75.0)**
-  - Docker: `docker compose build --no-cache && docker compose up -d`.
-  - Local: `make dev-bootstrap` (installs matching versions from `requirements-dev.txt`).
-
-- **Changed `.proto` not reflected**
-  - Docker: rebuild with `--no-cache`.
-  - Local: `make dev-bootstrap` (re-generates stubs and re-installs the wheel).
-
-- **Envoy shows "no healthy upstream"**
-  - Local: start REST (`:8000`) and gRPC (`:50051`) before running `envoy.dev.yaml`.
-  - Docker: both services must be healthy; check with `docker compose ps` and the service logs.
-
-- **Health probes not visible**
-  - Health logging is enabled by default (`LOG_HEALTH=1` in `.env`). To silence, set `LOG_HEALTH=0`.
-
----
 
 ## Credits
 

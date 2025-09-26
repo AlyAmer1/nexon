@@ -12,8 +12,8 @@ services:
 
   rest:
     build:
-      context: ./server
-      dockerfile: rest/Dockerfile
+      context: .
+      dockerfile: server/rest/Dockerfile
     container_name: nexon-rest
     env_file: ./.env
     environment:
@@ -32,8 +32,8 @@ services:
 
   grpc:
     build:
-      context: ./server
-      dockerfile: grpc_service/Dockerfile
+      context: .
+      dockerfile: server/grpc_service/Dockerfile
     container_name: nexon-grpc
     env_file: ./.env
     environment:

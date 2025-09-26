@@ -18,10 +18,14 @@ flatbuffers==24.12.23
 fsspec==2025.2.0
 gevent==24.11.1
 geventhttpclient==2.3.3
-googleapis-common-protos>=1.63.0
+googleapis-common-protos==1.70.0
 greenlet==3.1.1
+
+# --- Core RPC stack (keep grpcio & grpcio-tools in lockstep; protobuf exact) ---
 grpcio==1.75.0
 grpcio-health-checking==1.75.0
+protobuf==6.32.1
+
 h11==0.14.0
 huggingface-hub==0.28.1
 humanfriendly==10.0
@@ -39,7 +43,6 @@ onnx==1.17.0
 onnxruntime==1.20.1
 packaging==24.2
 pipreqs==0.4.13
-protobuf>=6.31.1,<7
 psutil==7.0.0
 pydantic==2.10.5
 pydantic_core==2.27.2
