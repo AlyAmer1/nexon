@@ -27,7 +27,7 @@ WHEEL_GLOB   := server/stubs/dist/*.whl
 help:
 	@echo "Targets:"
 	@echo "  make dev-bootstrap    - Create .env, venv, install deps, generate stubs, install wheel, -e ., checks"
-    @echo "    (afterwards: select .venv in your IDE or use make run-rest/run-grpc)"
+	@echo "    (afterwards: select .venv in your IDE or use make run-rest/run-grpc)"
 	@echo "  make ide-ready        - Alias for dev-bootstrap"
 	@echo "  make docker-up        - Build and start all services via docker-compose"
 	@echo "  make docker-down      - Stop services"
@@ -46,12 +46,13 @@ help:
 # One-shot for reviewers/supervisors
 dev-bootstrap: init-env venv dev-deps proto install-stubs install-editable import-check check-versions
 	@printf "\n\033[1;32mNEXON local dev environment is ready.\033[0m\n"
-	@echo "Next steps (choose one):"
-	@echo "  1) Run directly via Make (no activation):"
-	@echo "       make run-rest    # FastAPI on :8000"
-	@echo "       make run-grpc    # gRPC on :50051"
-	@echo "       make run-envoy-dev"
-	@echo "  2) Or point your IDE to the project venv so imports resolve:"
+	@echo "Next steps:"
+	@echo "  Run directly via Make (macOS/Linux; Windows use WSL2 Ubuntu):"
+	@echo "       make run-mongo-native   # MongoDB on localhost:27017"
+	@echo "       make run-rest           # FastAPI on :8000"
+	@echo "       make run-grpc           # gRPC on :50051"
+	@echo "       make run-envoy-dev      # Envoy on :8080 (local)"
+	@echo "  Note: Point your IDE to the project venv so imports resolve:"
 	@echo "       • PyCharm/IntelliJ: Settings → Project: Python Interpreter → Add → Existing → .venv/bin/python"
 	@echo "       • VS Code: Command Palette → Python: Select Interpreter → pick .venv"
 
@@ -61,7 +62,7 @@ init-env:
 	  if [ -f .env.example ]; then \
 	    cp .env.example .env && echo "Created .env from .env.example"; \
 	  else \
-	    printf "NEXON_MONGO_URI=mongodb://mongo:27017\nNEXON_MONGO_DB=onnx_platform\nLOG_HEALTH=1\n# ENABLE_REFLECTION=1\n" > .env && \
+	    printf "NEXON_MONGO_URI=mongodb://mongo:27017\nNEXON_MONGO_DB=onnx_platform\nLOG_HEALTH=1\nENABLE_REFLECTION=1\n" > .env && \
 	    echo "Created default .env"; \
 	  fi; \
 	else \
@@ -111,6 +112,9 @@ check-versions:
 run-rest:
 	$(PY) -m uvicorn rest.main:app --host 127.0.0.1 --port 8000
 
+run-rest-reload:
+	$(PY) -m uvicorn rest.main:app --host 127.0.0.1 --port 8000 --reload
+
 run-grpc:
 	$(PY) -m grpc_service.server
 
@@ -124,6 +128,10 @@ run-mongo-docker:
 
 run-mongo-native:
 	@mkdir -p $$HOME/data/db
+	@command -v mongod >/dev/null 2>&1 || { \
+	  echo "ERROR: 'mongod' not found. Install MongoDB or run 'make run-mongo-docker'."; \
+	  exit 1; \
+	}
 	mongod --dbpath $$HOME/data/db
 
 # -------- Docker helpers --------

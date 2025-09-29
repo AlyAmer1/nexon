@@ -1,67 +1,32 @@
 """
 NEXON Test Client for gRPC and REST Inference
 
-This script is a high-quality, production-ready tool for performance testing
-and functional validation of the inference server. It supports various testing
-scenarios crucial for academic analysis.
+This script provides performance tests and functional validation for the
+inference backends. It supports:
+  • Built-in preset input (sigmoid)
+  • Custom input from YAML (recommended) or JSON
 
-================================================================================
-                              COMMAND EXAMPLES
-================================================================================
-(Run all commands from the ./server directory)
-
-NOTE:
-- You can add `--iters <NUMBER>` (e.g., `--iters 50`) to any command
-  to repeat the request and get a stable average time.
-- To test the other model, replace with `--model-name gpt2_dynamic.onnx --preset gpt2`.
-
-  with `--model-name gpt2_dynamic.onnx --preset gpt2`.
-
---- 1. gRPC-Only Tests ---
-
-# Test gRPC with connection reuse (realistic, high-throughput scenario)
-python -m tools.client_test --model-name sigmoid.onnx --preset sigmoid
-
-# Test gRPC with fresh connections (measures connection overhead)
-python -m tools.client_test --model-name sigmoid.onnx --preset sigmoid --fresh-conn
-
---- 2. REST-Only Tests ---
-
-# Test REST with connection reuse
-python -m tools.client_test --model-name sigmoid.onnx --preset sigmoid --rest-only
-
-# Test REST with fresh connections
-python -m tools.client_test --model-name sigmoid.onnx --preset sigmoid --rest-only --fresh-conn
-
---- 3. Comparative Tests (gRPC vs. REST) ---
-
-# Compare performance with connection reuse (most common test)
-python -m tools.client_test --model-name sigmoid.onnx --preset sigmoid --compare-rest
-
-# Compare performance with fresh connections
-python -m tools.client_test --model-name sigmoid.onnx --preset sigmoid --compare-rest --fresh-conn
-
---- 4. Advanced: Targeting Direct Backends ---
-
-# Measure gRPC backend directly, bypassing Envoy
-python -m tools.client_test --model-name sigmoid.onnx --preset sigmoid --grpc-addr 127.0.0.1:50051
-
-# Measure REST backend directly, bypassing Envoy
-python -m tools.client_test --model-name sigmoid.onnx --preset sigmoid --rest-only \
-    --rest-base http://127.0.0.1:8000/inference/infer
-
-================================================================================
+Run from the project root's ./server directory.
+See the README section “NEXON Test Clients & Benchmarks” for examples.
 """
 from __future__ import annotations
-import argparse, asyncio, json, os, time
+
+import argparse
+import asyncio
+import json
+import os
+import time
 from typing import List, Tuple, Optional, cast
-import numpy as np
+
 import grpc
+import numpy as np
 import requests
+import yaml  # PyYAML
 
 import inference_pb2 as pb
 import inference_pb2_grpc as pb_grpc
 
+# -------- proto dtype <-> numpy dtype maps --------
 PB_TO_NP = {
     pb.DT_FLOAT32: np.float32,
     pb.DT_FLOAT64: np.float64,
@@ -107,13 +72,10 @@ def preset_sigmoid() -> np.ndarray:
     ]
     return np.array(data, dtype=np.float32)
 
-def preset_gpt2() -> np.ndarray:
-    return np.array([[50256]], dtype=np.int64)
-
 # ---------------------- REST (Session reuse) ----------------------
 _SESSION: Optional[requests.Session] = None
 
-def get_session(fresh_conn: bool) -> requests.Session:
+def _get_session(fresh_conn: bool) -> requests.Session:
     global _SESSION
     if fresh_conn:
         return requests.Session()
@@ -125,7 +87,7 @@ def post_rest_infer(base_url: str, model_name: str, x: np.ndarray, fresh_conn: b
     url = base_url.rstrip("/") + f"/{model_name}"
     payload = {"input": x.tolist()}
     data = json.dumps(payload).encode("utf-8")
-    s = get_session(fresh_conn)
+    s = _get_session(fresh_conn)
     t0 = time.perf_counter()
     r = s.post(url, headers={"Content-Type": "application/json"}, data=data, timeout=60)
     elapsed = time.perf_counter() - t0
@@ -139,15 +101,13 @@ _GRPC_CHANNEL: Optional[grpc.aio.Channel] = None
 _GRPC_STUB: Optional[pb_grpc.InferenceServiceStub] = None
 _GRPC_ADDR: Optional[str] = None
 
-async def get_grpc_stub(addr: str, fresh_conn: bool) -> pb_grpc.InferenceServiceStub:
+async def _get_grpc_stub(addr: str, fresh_conn: bool) -> pb_grpc.InferenceServiceStub:
     global _GRPC_CHANNEL, _GRPC_STUB, _GRPC_ADDR
     if fresh_conn:
-        # NOTE: The caller of this function is responsible for closing the returned channel
         ch = grpc.aio.insecure_channel(addr)
         return pb_grpc.InferenceServiceStub(ch)
     if _GRPC_STUB is None or _GRPC_ADDR != addr:
         _GRPC_ADDR = addr
-        # This channel will be managed globally and closed at the end of the script
         _GRPC_CHANNEL = grpc.aio.insecure_channel(addr)
         _GRPC_STUB = pb_grpc.InferenceServiceStub(_GRPC_CHANNEL)
     return _GRPC_STUB
@@ -159,15 +119,13 @@ async def predict_grpc(addr: str, model_name: str, x: np.ndarray,
     req_bytes = req.SerializeToString()
 
     if fresh_conn:
-        # Create a temporary channel for a single call and ensure it's closed
         async with grpc.aio.insecure_channel(addr) as channel:
             stub = pb_grpc.InferenceServiceStub(channel)
             t0 = time.perf_counter()
             reply = await stub.Predict(req, timeout=deadline_sec, wait_for_ready=wait_for_ready)
             elapsed = time.perf_counter() - t0
     else:
-        # Use the globally managed stub
-        stub = await get_grpc_stub(addr, fresh_conn=False)
+        stub = await _get_grpc_stub(addr, fresh_conn=False)
         t0 = time.perf_counter()
         reply = await stub.Predict(req, timeout=deadline_sec, wait_for_ready=wait_for_ready)
         elapsed = time.perf_counter() - t0
@@ -198,26 +156,48 @@ def compare_arrays(a: np.ndarray, b: np.ndarray, rtol: float, atol: float) -> Tu
         max_rel = float(max_rel_np)
     return ok, max_abs, max_rel
 
+# ---------------------- input loaders ----------------------
+def load_input_from_json(path: str, dtype_str: str) -> np.ndarray:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    dmap = {"float32": np.float32, "float64": np.float64, "int32": np.int32, "int64": np.int64, "bool": np.bool_}
+    if dtype_str not in dmap:
+        raise SystemExit("--json requires a valid --dtype (float32|float64|int32|int64|bool)")
+    return np.asarray(data, dtype=dmap[dtype_str])
+
+def load_input_from_yaml(path: str) -> np.ndarray:
+    with open(path, "r", encoding="utf-8") as f:
+        obj = yaml.safe_load(f)
+    if not isinstance(obj, dict) or "data" not in obj or "dtype" not in obj:
+        raise SystemExit("--input YAML must be a mapping with keys: data, dtype")
+    dmap = {"float32": np.float32, "float64": np.float64, "int32": np.int32, "int64": np.int64, "bool": np.bool_}
+    dtype_str = str(obj["dtype"]).lower()
+    if dtype_str not in dmap:
+        raise SystemExit("--input dtype must be one of: float32|float64|int32|int64|bool")
+    return np.asarray(obj["data"], dtype=dmap[dtype_str])
+
 # ---------------------- args ----------------------
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="NEXON gRPC client (Envoy single-port 8080 by default, optional REST parity).")
+    p = argparse.ArgumentParser(
+        description="NEXON client for gRPC (Envoy 8080 by default) with optional REST parity checks."
+    )
     p.add_argument("--grpc-addr", default=os.environ.get("NEXON_GRPC_ADDR", "127.0.0.1:8080"),
                    help="Target address for gRPC (default: Envoy 127.0.0.1:8080)")
     p.add_argument("--rest-base", default=os.environ.get("NEXON_REST_BASE", "http://127.0.0.1:8080/inference/infer"),
                    help="Base URL for REST (default: Envoy)")
     p.add_argument("--model-name", required=True, help="Deployed model name (e.g., sigmoid.onnx)")
+
     g = p.add_mutually_exclusive_group(required=True)
-    g.add_argument("--preset", choices=["sigmoid", "gpt2"], help="Use a built-in test input")
-    g.add_argument("--json", dest="json_path", help="Path to JSON file containing nested lists")
+    g.add_argument("--preset", choices=["sigmoid"], help="Use a built-in test input")
+    g.add_argument("--json", dest="json_path", help="Path to JSON file containing nested lists (use with --dtype)")
+    g.add_argument("--input", dest="yaml_path", help="YAML file with {data: [...], dtype: <type>}")
+
     p.add_argument("--dtype", choices=["float32", "float64", "int32", "int64", "bool"],
                    help="Required if --json is used")
 
-    # --- Mode Selection ---
     mode = p.add_mutually_exclusive_group()
-    mode.add_argument("--compare-rest", action="store_true",
-                      help="Run gRPC then REST and compare outputs.")
-    mode.add_argument("--rest-only", action="store_true",
-                      help="Run ONLY the REST test.")
+    mode.add_argument("--compare-rest", action="store_true", help="Run gRPC then REST and compare outputs.")
+    mode.add_argument("--rest-only", action="store_true", help="Run ONLY the REST test.")
 
     p.add_argument("--rtol", type=float, default=1e-5)
     p.add_argument("--atol", type=float, default=1e-6)
@@ -227,23 +207,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--deadline", type=float, default=60.0, help="gRPC per-call deadline (seconds)")
     return p.parse_args()
 
-def load_input_from_json(path: str, dtype_str: str) -> np.ndarray:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    dmap = {"float32": np.float32, "float64": np.float64, "int32": np.int32, "int64": np.int64, "bool": np.bool_}
-    if dtype_str not in dmap:
-        raise SystemExit("--json requires a valid --dtype")
-    return np.asarray(data, dtype=dmap[dtype_str])
-
 # ---------------------- main ----------------------
 async def main_async(args: argparse.Namespace) -> None:
-    """The core asynchronous logic of the client."""
     global _GRPC_CHANNEL, _SESSION
 
+    # Choose input
     if args.preset == "sigmoid":
         x = preset_sigmoid()
-    elif args.preset == "gpt2":
-        x = preset_gpt2()
+    elif args.yaml_path:
+        x = load_input_from_yaml(args.yaml_path)
     else:
         if not args.json_path or not args.dtype:
             raise SystemExit("--json requires --dtype")
@@ -275,10 +247,10 @@ async def main_async(args: argparse.Namespace) -> None:
         outs_rest_last: List[np.ndarray] = []
         rest_req_last = rest_rep_last = 0
         for i in range(args.iters):
-            # For comparison, we need a reference dtype from gRPC. In rest-only, we must infer it.
             ref_dtype = outs_grpc_last[0].dtype if outs_grpc_last else np.float32
-
-            results_json, t_rest, rest_req_sz, rest_rep_sz = post_rest_infer(args.rest_base, args.model_name, x, args.fresh_conn)
+            results_json, t_rest, rest_req_sz, rest_rep_sz = post_rest_infer(
+                args.rest_base, args.model_name, x, args.fresh_conn
+            )
             outs_rest = [np.asarray(results_json[0], dtype=ref_dtype)] if results_json else []
             if i == args.iters - 1:
                 outs_rest_last = outs_rest
@@ -305,7 +277,6 @@ async def main_async(args: argparse.Namespace) -> None:
         _SESSION.close()
 
 def main() -> None:
-    """Synchronous entry point that sets up and runs the async main function."""
     args = parse_args()
     asyncio.run(main_async(args))
 

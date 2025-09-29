@@ -43,6 +43,7 @@ services:
       GRPC_MAX_RECV_BYTES: 67108864
       GRPC_MAX_SEND_BYTES: 67108864
       LOG_HEALTH: "1"
+      ENABLE_REFLECTION: "1"
     depends_on:
       mongo:
         condition: service_healthy

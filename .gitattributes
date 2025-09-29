@@ -1,0 +1,2 @@
+# Treat ONNX artifacts as binary (no text diffs/merges/EOL normalization)
+*.onnx binary

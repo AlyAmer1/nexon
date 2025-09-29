@@ -6,19 +6,19 @@
 - Inference via REST and gRPC with identical request/response semantics.
 - Inference endpoints
   - REST: `POST /inference/infer/{model_name}`
-  - gRPC: `InferenceService/Predict`
+  - gRPC: `InferenceService/Predict` ([Full proto](server/grpc_service/protos/inference.proto))
+> gRPC FQMN: `nexon.grpc.inference.v1.InferenceService/Predict`
+
 - Envoy front door (single :8080 for REST + gRPC), admin UI on :9901.
 - Health: REST `/healthz` (liveness), `/readyz` (readiness) and gRPC Health service.
-- Frontend (REST-only): the React UI invokes REST endpoints and reaches the backend through Envoy on :8080.
+- Frontend: the React UI invokes REST model management endpoints via Envoy on :8080.
 - Shared components:
   - [Database (Motor + GridFS)](server/shared/database.py)
   - [Inference Orchestrator](server/shared/orchestrator.py)
   - [In-process Model Cache](server/shared/model_cache.py)
-- Reproducible stubs: 
-proto stubs generated at build time → packaged as a wheel → installed.
+- Reproducible stubs: proto files are compiled into Python gRPC stubs at build time, packaged as a wheel, and installed.
 - Modern, modular Python layout suitable for benchmarking and coursework.
-- Docker containerization for one-command bring-up, and multi-stage builds for
-  gRPC stubs.
+- Docker containerization with health checks and multi-stage builds for gRPC stubs.
 
 ---
 
@@ -55,6 +55,7 @@ docker compose up -d --build
 
 ### **4. What's Running**
 - Envoy (gateway): `http://localhost:8080`
+- REST API docs (via Envoy): `http://localhost:8080/docs`
 - REST service (direct): `http://localhost:8000` (HTTP/1.1)
 - gRPC service (direct): `localhost:50051` (HTTP/2)
 - MongoDB: `localhost:27017`
@@ -68,39 +69,35 @@ docker compose logs -f grpc
 docker compose logs -f envoy
 ```
 
-> **Developer note (IDE imports while using Docker)**
-> The gRPC stubs (`inference_pb2*`) are generated **inside the images**. Your local IDE may still show unresolved imports because it isn’t using the container’s interpreter.
-> - Quick fix for editor-only resolution: run `make dev-bootstrap` once to build/install the stubs wheel into a local `.venv/`, then point your IDE at `.venv/bin/python`.
-> - **PyCharm/IntelliJ:** Settings → Project: Python Interpreter → Add → Existing → select `.venv/bin/python`
-> - **VS Code:** Command Palette → “Python: Select Interpreter” → choose `.venv`
-> (No change is needed to run via Docker—this is just for your editor’s IntelliSense.)
-
 Note: gRPC stubs are generated during the Docker build into `/app/server/stubs/`, packaged as a wheel, and installed into the image. They are not committed to git.
 
 ---
 
 ## 🧱 Local Development (optional)
 
-This prepares a local virtualenv, generates protobuf/gRPC stubs, installs the stubs wheel, and installs the app in editable mode - so IDEs resolve `inference_pb2*` without warnings.
+> **Platform note**
+> - **macOS/Linux:** run `make dev-bootstrap`.
+> - **Windows:** use **WSL2 (Ubuntu)** and run the same `make` commands.  
+
+`make` is a convenience for Unix-like environments; **Docker remains the primary, OS-agnostic path**.
 
 ### 1) One-time dev setup
+
 ```bash
 # from repo root
-make init-env dev-bootstrap
+make dev-bootstrap
 # - creates .env if missing (defaults)
 # - creates .venv, installs runtime + dev deps
 # - generates protobuf/gRPC stubs, builds & installs the wheel
-# - installs your app in editable mode and runs sanity checks
+# - installs the app in editable mode and runs sanity checks
 ```
 
 ### 2) Start services locally (separate terminals)
 
 **MongoDB**
 ```bash
-mkdir -p ~/data/db
 make run-mongo-native
 ```
-
 
 **REST (FastAPI)**
 ```bash
@@ -123,20 +120,24 @@ make run-envoy-dev
 cd frontend
 npm install
 npm start
-# The UI calls REST endpoints (via Envoy on :8080).
+# The UI calls REST model management endpoints (via Envoy on :8080).
 ```
 
----
-
-> **🛠️ Developer note (IDE imports)**
-> The gRPC stubs (`inference_pb2*`) are generated **inside the images**. Your local IDE may still show unresolved imports because it isn’t using the container’s interpreter.
-> - Quick fix for editor-only resolution: After running `make dev-bootstrap` once to build/install the stubs wheel into a local `.venv/`, then point your IDE at `.venv/bin/python`.
-> - **PyCharm/IntelliJ:** Settings → Project: Python Interpreter → Add → Existing → select `.venv/bin/python`
+> 🛠️ **Developer note (IDE imports)**
+> 
+>The gRPC stubs (`inference_pb2*`) are generated inside the images. Your local IDE may still show unresolved imports if it isn’t using the container’s interpreter.
+>- **Quick fix**: after `make dev-bootstrap`, point your IDE at `.venv/bin/python`
+> (On native Windows: `.venv\Scripts\python.exe`)
+> <details>
+> <summary><strong>IDE setup tips (optional)</strong></summary>
+>
+> - **PyCharm/IntelliJ:** `Settings` → `Project: Python Interpreter` → `Add` → `Existing` → select `.venv/bin/python`
 > - **VS Code:** Command Palette → “Python: Select Interpreter” → choose `.venv`
-    > (No change is needed to run via Docker—this is just for your editor’s IntelliSense.)
+>
+> *No change is needed to run via Docker—this is just for editor IntelliSense.*
+> </details>
 
 
----
 
 ## 🧩 Architecture at a Glance
 
@@ -145,30 +146,31 @@ nexon/
 ├─ ops/envoy/
 │  ├─ envoy.yaml       # Docker routing (service names: rest, grpc)
 │  ├─ envoy.dev.yaml   # Local routing (localhost:8000 / :50051)
-│  └─ logs/            # access logs (kept in git via .gitkeep)
+│  └─ logs/            # access logs
 ├─ server/
-│  ├─ rest/            # FastAPI app (REST), mounted under Envoy
-│  ├─ grpc_service/    # gRPC server, health, protos, stubs build script
+│  ├─ rest/            # FastAPI REST service; exposes /inference, /upload, /deployment
+│  ├─ grpc_service/    # Async gRPC service; protos in ./protos; stubs packaged as a wheel at build time
 │  ├─ shared/
-│  │  ├─ database.py          # Mongo (Motor) + GridFS clients
-│  │  ├─ orchestrator.py      # shared inference orchestration (REST+gRPC)
+│  │  ├─ database.py          # MongoDB (Motor) + GridFS clients
+│  │  ├─ orchestrator.py      # shared inference orchestration
 │  │  └─ model_cache.py       # ONNXRuntime session cache (LRU/TTL)
-│  └─ tools/                  # developer tools, clients
+│  └─ tools/                  # CLI test clients & micro-benchmarks
 └─ docker-compose.yml         # mongo + rest + grpc + envoy
 ```
 
 ---
 
 
-## Credits
+## Acknowledgments
 
 This work extends the original NEXON project by Hussein Megahed (UI and initial REST workflow).
 
-Additions in this research extension:
-- gRPC Inference Service 
-- Envoy gateway (unified ingress on :8080)
-- Shared components introduced for robustness and performance:
-  - Centralized database module (Motor + GridFS)
-  - Inference orchestrator (common logic used by REST and gRPC)
-  - In-process model cache for ONNX Runtime sessions (LRU/TTL)
-- Docker containerization and a wheel-based protobuf/gRPC stubs pipeline for reproducible builds
+Key contributions in this research extension:
+- **gRPC Inference Service** — low-latency, high-throughput inference (establishes a foundation for multiple communication protocols)
+- **Envoy gateway** — unified ingress on :8080
+- **Shared components (used by both REST & gRPC):**
+  - Centralized database module
+  - Inference orchestrator
+  - In-process model cache for ONNX Runtime sessions
+- **REST workflow hardening** — added health/readiness, OpenAPI/Swagger documentation, modular sub-apps
+- **Docker containerization** and a reproducible protobuf/gRPC stubs pipeline
