@@ -1,4 +1,3 @@
-# File: server/rest/main.py
 from __future__ import annotations
 import os
 import logging
@@ -7,20 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from bson import ObjectId
 from bson.errors import InvalidId
 
-# Sub-apps live under rest/app/services (NOT top-level "app")
-from rest.app.services.inference import app as inference_app
-from rest.app.services.deployment import app as deployment_app
-from rest.app.services.upload import app as upload_app
+# Routers (now APIRouter-based)
+from rest.app.services import inference, deployment, upload
 
-# Shared DB handles (Motor + GridFS)
+# Shared DB handles
 from shared.database import fs, models_collection
-# If you want to close the Motor client on shutdown (recommended):
 from shared.database import client as mongo_client
 
-# -----------------------------------------------------------------------------
-# Logging: suppress /healthz and /readyz access logs unless LOG_HEALTH=1
-# -----------------------------------------------------------------------------
-LOG_HEALTH = os.getenv("LOG_HEALTH", "1").lower() in ("1", "true", "yes", "on")
+LOG_HEALTH = os.getenv("LOG_HEALTH", "0").lower() in ("1", "true", "yes", "on")
 
 class _HealthAccessFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -31,10 +24,26 @@ class _HealthAccessFilter(logging.Filter):
 
 logging.getLogger("uvicorn.access").addFilter(_HealthAccessFilter())
 
-# -----------------------------------------------------------------------------
-# App
-# -----------------------------------------------------------------------------
-app = FastAPI()
+openapi_tags = [
+    {"name": "Upload", "description": "Upload ONNX models (status → Uploaded)."},
+    {"name": "Deployment", "description": "Deploy / undeploy models (Uploaded ↔ Deployed)."},
+    {"name": "Inference", "description": "Run inference on deployed models."},
+    {"name": "Inventory", "description": "List / delete models."},
+]
+
+app = FastAPI(
+    title="NEXON REST API",
+    version="1.1",
+    description="Upload, deploy, and run inference on ONNX models (MongoDB + GridFS).",
+    openapi_tags=openapi_tags,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    swagger_ui_parameters={
+        "defaultModelsExpandDepth": -1,  # hide the “Schemas” panel
+        "docExpansion": "list",          # collapse endpoints by default (tidier)
+    },
+)
 
 @app.get("/healthz", include_in_schema=False)
 async def healthz():
@@ -60,65 +69,54 @@ async def _on_shutdown():
         pass
     logging.getLogger("rest").info("REST shutdown complete.")
 
-# Mount the inference/deployment/upload sub-apps
-app.mount("/inference", inference_app)
-app.mount("/deployment", deployment_app)
-app.mount("/upload", upload_app)
+# ✅ Include routers so everything shows in ONE Swagger (/docs)
+app.include_router(upload.router)
+app.include_router(deployment.router)
+app.include_router(inference.router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to the ONNX Inference API!"}
 
-@app.get("/deployedModels")
+# ------- Inventory endpoints (kept as-is) -------
+@app.get("/deployedModels", tags=["Inventory"])
 async def get_deployed_models():
     models = [m async for m in models_collection.find({"status": "Deployed"})]
     for m in models:
-        m["_id"] = str(m["_id"])
-        m["file_id"] = str(m["file_id"])
+        m["_id"] = str(m["_id"]); m["file_id"] = str(m["file_id"])
     return models
 
-@app.get("/uploadedModels")
+@app.get("/uploadedModels", tags=["Inventory"])
 async def get_uploaded_models():
     models = [m async for m in models_collection.find({"status": "Uploaded"})]
     for m in models:
-        m["_id"] = str(m["_id"])
-        m["file_id"] = str(m["file_id"])
+        m["_id"] = str(m["_id"]); m["file_id"] = str(m["file_id"])
     return models
 
-@app.get("/allModels")
+@app.get("/allModels", tags=["Inventory"])
 async def get_all_models():
     models = [m async for m in models_collection.find({})]
     for m in models:
-        m["_id"] = str(m["_id"])
-        m["file_id"] = str(m["file_id"])
+        m["_id"] = str(m["_id"]); m["file_id"] = str(m["file_id"])
     return models
 
-@app.delete("/deleteModel/{model_name}/{model_version}")
+@app.delete("/deleteModel/{model_name}/{model_version}", tags=["Inventory"])
 async def delete_model(model_name: str, model_version: int):
-    """
-    Deletes a specific model version from MongoDB (metadata) and GridFS (binary).
-    """
     model = await models_collection.find_one({"name": model_name, "version": int(model_version)})
     if not model:
         raise HTTPException(status_code=404, detail="Model not found.")
-
     file_id = model.get("file_id")
     if not file_id:
         raise HTTPException(status_code=400, detail="Model does not have a valid file ID.")
-
     try:
         oid = ObjectId(file_id)
     except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid file_id; expected a valid ObjectId.")
-
     try:
         await fs.delete(oid)
         delete_result = await models_collection.delete_one({"_id": model["_id"]})
