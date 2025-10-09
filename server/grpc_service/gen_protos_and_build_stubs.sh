@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Resolve repo root as: <this file>/..
+# Resolve repo root from this script’s location:
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${ROOT_DIR}"
 
-# Paths relative to repo root (/app/server in Docker)
+# Paths relative to /app/server in the build container
 PROTO_DIR="${ROOT_DIR}/grpc_service/protos"
 STUBS_DIR="${ROOT_DIR}/stubs"
 
+# 0) Clean previous artifacts
 rm -rf "${STUBS_DIR}"
 mkdir -p "${STUBS_DIR}"
 
-# Collect .proto files (portable; no bash 4+ features)
+# 1) Collect proto files
 PROTO_FILES="$(find "${PROTO_DIR}" -type f -name '*.proto' -print | sort || true)"
 if [ -z "${PROTO_FILES}" ]; then
   echo "ERROR: No .proto files found in ${PROTO_DIR}" >&2
   exit 1
 fi
 
-# 1) Generate *_pb2*.py and type stubs (*.pyi) into a flat directory
-#    (word-splitting on ${PROTO_FILES} is intentional; paths shouldn't contain spaces)
+# 2) Generate Python stubs (+ .pyi type stubs)
 python -m grpc_tools.protoc \
   -I "${PROTO_DIR}" \
   --python_out="${STUBS_DIR}" \
@@ -29,13 +29,14 @@ python -m grpc_tools.protoc \
   --mypy_out="${STUBS_DIR}" \
   ${PROTO_FILES}
 
-# 2) Build pyproject.toml with py-modules listing all generated Python modules
+# 3) Build a wheel containing the top-level modules (e.g., inference_pb2*.py)
+#    We synthesize a minimal pyproject.toml and set the module list dynamically.
 PYMODULES="$(find "${STUBS_DIR}" -maxdepth 1 -type f -name '*.py' \
   -exec basename {} .py \; | sort | tr '\n' ',' | sed 's/,$//')"
 
 cat > "${STUBS_DIR}/pyproject.toml" <<'TOML'
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=68", "wheel", "tomli-w"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -45,27 +46,25 @@ requires-python = ">=3.11"
 description = "Protobuf/gRPC stubs for NEXON (generated at build time)"
 
 [tool.setuptools]
-# These are top-level modules like "inference_pb2"
 py-modules = []
-# Also ship the *.pyi type stubs so IDEs can resolve symbols
 include-package-data = true
 
-# Install *.pyi files at site-packages root (next to the py-modules)
 [tool.setuptools.data-files]
 "" = ["*.pyi"]
 TOML
 
-# Inject the discovered modules
 python - <<PY
-import pathlib, tomllib, tomli_w
+import pathlib, tomllib
+from tomli_w import dumps as tomli_w_dumps
+
 pp = pathlib.Path("stubs/pyproject.toml")
 data = tomllib.loads(pp.read_text())
 mods = [m for m in "${PYMODULES}".split(",") if m]
 data.setdefault("tool", {}).setdefault("setuptools", {})["py-modules"] = mods
-pp.write_text(tomli_w.dumps(data))
+pp.write_text(tomli_w_dumps(data))
 print("py-modules:", mods)
 PY
 
-# 3) Build the wheel into stubs/dist
+# 4) Build the wheel into stubs/dist
 python -m pip wheel "${STUBS_DIR}" -w "${STUBS_DIR}/dist" --no-deps
 ls -1 "${STUBS_DIR}/dist"

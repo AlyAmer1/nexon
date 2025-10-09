@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../config";
 
 const ModelOverview = () => {
   const [models, setModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState(null); 
+  const [selectedModel, setSelectedModel] = useState(null);
   const navigate = useNavigate();
   const [notification, setNotification] = useState("");
 
   useEffect(() => {
-    axios.get("http://127.0.0.1:8080/allModels")
+    axios.get(`${API_BASE}/allModels`)
       .then(response => {
         setModels(response.data);
       })
@@ -18,7 +19,7 @@ const ModelOverview = () => {
 
   const deleteModel = async (modelName, modelVersion) => {
   try {
-    const response = await axios.delete(`http://127.0.0.1:8080/deleteModel/${modelName}/${modelVersion}`
+    const response = await axios.delete(`${API_BASE}/deleteModel/${modelName}/${modelVersion}`
     );
     setNotification(`✅ ${response.data.message}`);
 
@@ -37,31 +38,31 @@ const ModelOverview = () => {
   const undeployModel = async (modelName, modelVersion) => {
     try {
       // Send a request to the backend to undeploy the model
-      const response = await axios.put(`http://127.0.0.1:8080/deployment/undeploy/${modelName}`, {
+      const response = await axios.put(`${API_BASE}/deployment/undeploy/${modelName}`, {
          model_name: modelName,
-         model_version: modelVersion 
+         model_version: modelVersion
     });
-  
+
       // Show success notification
       setNotification(`✅ ${response.data.message}`);
-  
+
       // Remove the notification after 3 seconds
       setTimeout(() => setNotification(""), 3000);
-  
+
       // Update state to remove the model from deployed models
       setModels(models.map(model =>
         model.name === modelName && model.version === modelVersion
           ? { ...model, status: "Pending" } // Change status to "Pending" instead of removing
           : model
       ));
-      
+
     } catch (error) {
       // Show error notification
       setNotification("❌ Failed to undeploy model.");
       setTimeout(() => setNotification(""), 3000);
     }
   };
-  
+
 
   const goBack = () => navigate(-1);
   const navToHomePage = () => navigate('/home');
@@ -110,7 +111,7 @@ const ModelOverview = () => {
               </div>
 
             </div>
-          ))} 
+          ))}
         </div>
       )}
 
@@ -175,8 +176,8 @@ const styles = {
   button: {
     flex: "1",
     marginTop: "10px",
-    minWidth: "120px", 
-    whiteSpace: "nowrap", 
+    minWidth: "120px",
+    whiteSpace: "nowrap",
     padding: "10px",
     border: "none",
     backgroundColor: "#2575fc",
@@ -239,7 +240,7 @@ const styles = {
     fontSize: "16px",
     marginTop: "10px",
     marginRight: "10px",
-  
+
   },
   closeButton: {
     backgroundColor: "#ff4d4d",
@@ -306,9 +307,9 @@ const styles = {
     transition: "opacity 0.3s ease",
   },
   buttonDiv: {
-    display: "flex",        
-    gap: "10px",           
-    justifyContent: "center", 
-    alignItems: "center",  
+    display: "flex",
+    gap: "10px",
+    justifyContent: "center",
+    alignItems: "center",
   }
 };

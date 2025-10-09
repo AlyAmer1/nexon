@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Sequence
+from typing import Any, List, Sequence, Optional
 
 import numpy as np
 import onnxruntime as ort
@@ -11,6 +11,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 
 from .model_cache import ModelCache
+import inference_pb2 as pb
 
 
 # ---------- Domain errors surfaced to API layers ----------
@@ -42,6 +43,32 @@ ONNX_TO_NP = {
     "tensor(int32)":   np.dtype("<i4"),
     "tensor(bool)":    np.dtype(np.bool_),
     "tensor(boolean)": np.dtype(np.bool_),
+}
+
+# REST string → NumPy dtype (used when clients specify dtype by name)
+STR_TO_NP = {
+    "float32": np.dtype("<f4"),
+    "float64": np.dtype("<f8"),
+    "int32":   np.dtype("<i4"),
+    "int64":   np.dtype("<i8"),
+    "bool":    np.dtype(np.bool_),
+}
+
+# Sentinels to preserve semantics for gRPC request data_type
+DT_UNSPECIFIED_SENTINEL = object()   # means: derive dtype from model
+DT_UNSUPPORTED_SENTINEL = object()   # means: explicitly unsupported over raw-bytes path
+
+# Centralized proto enum → NumPy dtype (imported by gRPC server)
+# - UNSPECIFIED -> DT_UNSPECIFIED_SENTINEL (derive from model)
+# - STRING      -> DT_UNSUPPORTED_SENTINEL (reject in raw-bytes path)
+PROTO_TO_NP = {
+    pb.DT_FLOAT32: np.dtype("<f4"),
+    pb.DT_FLOAT64: np.dtype("<f8"),
+    pb.DT_INT32:   np.dtype("<i4"),
+    pb.DT_INT64:   np.dtype("<i8"),
+    pb.DT_BOOL:    np.dtype(np.bool_),
+    pb.DT_STRING:  DT_UNSUPPORTED_SENTINEL,
+    pb.DT_UNSPECIFIED: DT_UNSPECIFIED_SENTINEL,
 }
 
 
@@ -125,11 +152,19 @@ class InferenceOrchestrator:
             raise RuntimeError("Failed to load ONNX session from cache.")
         return sess
 
-    # -------- REST path: JSON lists → NumPy --------
-    async def run(self, *, model_name: str, input_data: Any) -> List[np.ndarray]:
+    # -------- REST path: JSON lists → NumPy (Option B′: optional dtype) --------
+    async def run(
+            self,
+            *,
+            model_name: str,
+            input_data: Any,
+            request_dtype_str: Optional[str] = None,
+    ) -> List[np.ndarray]:
         """
         Resolve deployed model by name, load session from cache, and execute output[0]
         using input bound to input[0]. Returns a list with one NumPy array.
+
+        If request_dtype_str is provided, it must match the model's input dtype.
         """
         file_id = await self._resolve_deployed_file_id(model_name)
         session = await self._load_session(file_id)
@@ -140,6 +175,16 @@ class InferenceOrchestrator:
         np_dtype = ONNX_TO_NP.get(onnx_dt)
         if np_dtype is None:
             raise InvalidInputError(f"Unsupported ONNX input dtype: {onnx_dt}")
+
+        # Optional dtype from request (parity with gRPC)
+        if request_dtype_str is not None:
+            req_np = STR_TO_NP.get(request_dtype_str)
+            if req_np is None:
+                raise InvalidInputError(f"Unsupported request dtype: {request_dtype_str}")
+            if req_np != np_dtype:
+                raise InvalidInputError(
+                    f"dtype mismatch: request {request_dtype_str} vs model {onnx_dt}"
+                )
 
         try:
             arr = np.asarray(input_data, dtype=np_dtype)
@@ -156,7 +201,7 @@ class InferenceOrchestrator:
         outputs = session.run([out0_name], {in_name: arr})
         return [np.asarray(outputs[0])]
 
-    # -------- gRPC path: raw bytes + dims → NumPy --------
+    # -------- gRPC path: raw bytes + dims → NumPy (Option B′: optional dtype) --------
     async def run_from_bytes(
             self,
             *,
@@ -164,12 +209,14 @@ class InferenceOrchestrator:
             dims: Sequence[int],
             raw_bytes: bytes,
             provided_name: str = "",
+            request_dtype: Optional[np.dtype] = None,
     ) -> List[np.ndarray]:
         """
         Same as `run`, but accepts a pre-serialized tensor:
         - dims: shape of the input
         - raw_bytes: row-major tensor bytes
         - provided_name: optional; if given, must match model input[0].name
+        - request_dtype: optional explicit dtype (numpy dtype). If None -> derive from model.
         """
         file_id = await self._resolve_deployed_file_id(model_name)
         session = await self._load_session(file_id)
@@ -181,8 +228,15 @@ class InferenceOrchestrator:
         if np_dtype is None:
             raise InvalidInputError(f"Unsupported ONNX input dtype: {onnx_dt}")
 
+        # Optional name validation
         if provided_name and provided_name != in_name:
             raise InvalidInputError(f"input.name '{provided_name}' does not match model input[0] '{in_name}'.")
+
+        # Optional dtype validation
+        if request_dtype is not None and request_dtype != np_dtype:
+            raise InvalidInputError(
+                f"dtype mismatch: request {request_dtype} vs model {onnx_dt}"
+            )
 
         dims = [int(d) for d in dims]
         arr = _numpy_from_bytes(raw_bytes, dims, np_dtype)

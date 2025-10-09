@@ -26,6 +26,12 @@ import yaml  # PyYAML
 import inference_pb2 as pb
 import inference_pb2_grpc as pb_grpc
 
+
+GRPC_OPTS = [
+    ('grpc.max_send_message_length', 200 * 1024 * 1024),    # 200 MiB
+    ('grpc.max_receive_message_length', 200 * 1024 * 1024), # 200 MiB
+]
+
 # -------- proto dtype <-> numpy dtype maps --------
 PB_TO_NP = {
     pb.DT_FLOAT32: np.float32,
@@ -108,7 +114,7 @@ async def _get_grpc_stub(addr: str, fresh_conn: bool) -> pb_grpc.InferenceServic
         return pb_grpc.InferenceServiceStub(ch)
     if _GRPC_STUB is None or _GRPC_ADDR != addr:
         _GRPC_ADDR = addr
-        _GRPC_CHANNEL = grpc.aio.insecure_channel(addr)
+        _GRPC_CHANNEL = grpc.aio.insecure_channel(addr, options=GRPC_OPTS)
         _GRPC_STUB = pb_grpc.InferenceServiceStub(_GRPC_CHANNEL)
     return _GRPC_STUB
 
@@ -119,7 +125,7 @@ async def predict_grpc(addr: str, model_name: str, x: np.ndarray,
     req_bytes = req.SerializeToString()
 
     if fresh_conn:
-        async with grpc.aio.insecure_channel(addr) as channel:
+        async with grpc.aio.insecure_channel(addr, options=GRPC_OPTS) as channel:
             stub = pb_grpc.InferenceServiceStub(channel)
             t0 = time.perf_counter()
             reply = await stub.Predict(req, timeout=deadline_sec, wait_for_ready=wait_for_ready)

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../config";
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ const Upload = () => {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await axios.post("http://127.0.0.1:8080/upload/", formData);
+      const response = await axios.post(`${API_BASE}/upload/`, formData);
 
       setUploadMessage(response.data.message);
     } catch (error) {

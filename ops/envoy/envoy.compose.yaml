@@ -1,6 +1,6 @@
-# NEXON Envoy front-proxy for Docker Compose
+# NEXON Envoy front-proxy for HOST (localhost) runs
 # - :8080 -> BOTH REST & gRPC (AUTO codec; route by gRPC matcher)
-# - :9901 -> admin (exposed via compose port mapping)
+# - :9901 -> admin
 
 static_resources:
   listeners:
@@ -17,10 +17,11 @@ static_resources:
                 normalize_path: true
                 merge_slashes: true
                 request_headers_timeout: 5s
-                request_timeout: 60s
+                request_timeout: 0s            # for Benchmarking
+                stream_idle_timeout: 0s
                 stream_error_on_invalid_http_message: true
 
-                # Access log: prefer stdout in containers (Docker captures it)
+
                 access_log:
                   - name: envoy.access_loggers.stdout
                     typed_config:
@@ -35,7 +36,6 @@ static_resources:
                           status: "%RESPONSE_CODE%"
                           duration_ms: "%DURATION%"
                           upstream_host: "%UPSTREAM_HOST%"
-                          request_id: "%REQ(X-REQUEST-ID)%"
                           content_type: "%REQ(content-type)%"
 
                 route_config:
@@ -44,10 +44,8 @@ static_resources:
                     - name: backend
                       domains: ["*"]
 
-                      # CORS (so the web app can call through Envoy on 8080)
                       cors:
-                        allow_origin_string_match:
-                          - prefix: "*"       # relax as needed
+                        allow_origin_string_match: [{ prefix: "*" }]
                         allow_methods: "GET, PUT, DELETE, POST, OPTIONS"
                         allow_headers: "*"
                         expose_headers: "*"
@@ -55,18 +53,20 @@ static_resources:
 
                       routes:
                         # gRPC (idiomatic matcher) → grpc_backend
-                        - match:
-                            prefix: "/"
-                            grpc: {}
+                        - match: { prefix: "/", grpc: {} }
                           route:
                             cluster: grpc_backend
-                            timeout: 0s   # don't cut off long RPCs/streams
+                            timeout: 0s
+                            retry_policy:        # ⬅ added
+                              num_retries: 0
 
                         # Everything else (REST, uploads, web app calls) → FastAPI
                         - match: { prefix: "/" }
                           route:
                             cluster: rest_backend
-                            timeout: 60s
+                            timeout: 0s          # ⬅ changed from 60s
+                            retry_policy:        # ⬅ added
+                              num_retries: 0
 
                 http_filters:
                   - name: envoy.filters.http.cors
@@ -79,7 +79,7 @@ static_resources:
   clusters:
     # REST upstream (FastAPI, HTTP/1.1)
     - name: rest_backend
-      type: STRICT_DNS
+      type: LOGICAL_DNS
       connect_timeout: 0.5s
       lb_policy: ROUND_ROBIN
       load_assignment:
@@ -87,7 +87,7 @@ static_resources:
         endpoints:
           - lb_endpoints:
               - endpoint:
-                  address: { socket_address: { address: rest, port_value: 8000 } }
+                  address: { socket_address: { address: 127.0.0.1, port_value: 8000 } }
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
@@ -98,12 +98,11 @@ static_resources:
           interval: 60s
           unhealthy_threshold: 2
           healthy_threshold: 2
-          http_health_check:
-            path: /healthz
+          http_health_check: { path: /healthz }
 
     # gRPC upstream (HTTP/2 to your gRPC service)
     - name: grpc_backend
-      type: STRICT_DNS
+      type: LOGICAL_DNS
       connect_timeout: 0.5s
       lb_policy: ROUND_ROBIN
       load_assignment:
@@ -111,22 +110,20 @@ static_resources:
         endpoints:
           - lb_endpoints:
               - endpoint:
-                  address: { socket_address: { address: grpc, port_value: 50051 } }
+                  address: { socket_address: { address: 127.0.0.1, port_value: 50051 } }
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
           explicit_http_config:
-            http2_protocol_options:
-              max_concurrent_streams: 1000
+            http2_protocol_options: { max_concurrent_streams: 1000 }
       health_checks:
         - timeout: 2s
           interval: 60s
           unhealthy_threshold: 2
           healthy_threshold: 2
           grpc_health_check:
-            # Keep empty unless you've set a fully-qualified health service in your server
+            # empty = overall service health; matches your server defaults
             service_name: ""
 
 admin:
-  # Bind to all in-container interfaces so 9901:9901 works from host
   address: { socket_address: { address: 0.0.0.0, port_value: 9901 } }

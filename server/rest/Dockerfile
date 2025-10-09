@@ -9,14 +9,12 @@ COPY server/requirements.txt /app/server/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /app/server/requirements.txt
 
-# Copy only the application subtree (rest/, shared/, etc.)
+# Copy only the application subtree
 COPY server/ /app/server
 
-# Build-time import check (no package install needed)
+# Build-time import check (ensures module wiring is intact)
 RUN python - <<'PY'
-import sys, importlib
-print("PYTHON:", sys.executable)
-print("sys.path[0]:", sys.path[0])
+import importlib
 for m in [
     "rest.main",
     "shared.database",
@@ -25,7 +23,7 @@ for m in [
     "rest.app.services.upload",
 ]:
     importlib.import_module(m)
-print("IMPORTS OK")
+print("REST imports OK")
 PY
 
 # Non-root user
@@ -33,5 +31,4 @@ RUN useradd -m appuser
 ENV PYTHONUNBUFFERED=1
 USER appuser
 
-WORKDIR /app/server
 CMD ["uvicorn", "rest.main:app", "--host", "0.0.0.0", "--port", "8000"]

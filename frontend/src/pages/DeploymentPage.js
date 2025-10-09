@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
-
-const API_BASE = "http://127.0.0.1:8080"; // REST base (Envoy)
-const GRPC_ADDR = "127.0.0.1:8080";       // gRPC address (Envoy)
-const GRPC_SERVICE = "nexon.grpc.inference.v1.InferenceService/Predict"; // FQMN
+import { API_BASE, GRPC_ADDR, GRPC_SERVICE } from "../config";
 
 const Deploy = () => {
   const [selectedModel, setSelectedModel] = useState("");
@@ -70,11 +67,11 @@ const Deploy = () => {
       }
 
       const data = response.data || {};
-      // robust REST URL extraction (new and old shapes)
+      // robust REST URL extraction (new shape first, then legacy fallbacks)
       const restURL =
-        data.rest_envoy ||
-        data.inference_endpoint ||
-        (data.endpoints && data.endpoints.rest) ||
+        data?.endpoints?.rest_envoy ||   // ✅ new backend
+        data?.inference_endpoint ||       // legacy (older backend)
+        data?.endpoints?.rest ||          // super-legacy fallback
         "";
 
       setStatusMessage(data.message || "Deployed successfully.");
@@ -231,7 +228,7 @@ const styles = {
     padding: 10,
     color: "#fff",
     backgroundColor: "#1f1f2e",
-    border: "1px solid #6a11cb",
+    border: "1px solid #6a11cb", // <-- fixed
     borderRadius: 8,
     outline: "none",
   },
@@ -277,10 +274,9 @@ const styles = {
     fontWeight: 800,
     marginBottom: 8,
     letterSpacing: 0.5,
-    textDecoration: "underline", // underline for visibility
+    textDecoration: "underline",
   },
 
-  // readable monospace wrapping (no mid-word breaks)
   mono: {
     fontFamily:
       "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
@@ -301,7 +297,7 @@ const styles = {
     padding: 14,
     display: "flex",
     alignItems: "center",
-    justifyContent: "center", // centered button
+    justifyContent: "center",
     gap: 16,
   },
   ctaLabel: { color: "#c2c2c2" },

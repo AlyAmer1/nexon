@@ -17,7 +17,8 @@ static_resources:
                 normalize_path: true
                 merge_slashes: true
                 request_headers_timeout: 5s
-                request_timeout: 60s
+                request_timeout: 0s            # ⬅ changed from 60s
+                stream_idle_timeout: 0s         # ⬅ added
                 stream_error_on_invalid_http_message: true
 
                 access_log:
@@ -34,7 +35,6 @@ static_resources:
                           status: "%RESPONSE_CODE%"
                           duration_ms: "%DURATION%"
                           upstream_host: "%UPSTREAM_HOST%"
-                          request_id: "%REQ(X-REQUEST-ID)%"
                           content_type: "%REQ(content-type)%"
 
                 route_config:
@@ -56,12 +56,16 @@ static_resources:
                           route:
                             cluster: grpc_backend
                             timeout: 0s
+                            retry_policy:
+                              num_retries: 0
 
                         # Everything else (REST, uploads, web app calls) → FastAPI
                         - match: { prefix: "/" }
                           route:
                             cluster: rest_backend
-                            timeout: 60s
+                            timeout: 0s          # For Benchmarking purposes
+                            retry_policy:
+                              num_retries: 0
 
                 http_filters:
                   - name: envoy.filters.http.cors
