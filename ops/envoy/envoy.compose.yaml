@@ -87,7 +87,7 @@ static_resources:
         endpoints:
           - lb_endpoints:
               - endpoint:
-                  address: { socket_address: { address: 127.0.0.1, port_value: 8000 } }
+                  address: { socket_address: { address: rest, port_value: 8000 } }
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
@@ -110,7 +110,7 @@ static_resources:
         endpoints:
           - lb_endpoints:
               - endpoint:
-                  address: { socket_address: { address: 127.0.0.1, port_value: 50051 } }
+                  address: { socket_address: { address: grpc, port_value: 50051 } }
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
