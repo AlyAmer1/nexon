@@ -144,18 +144,18 @@ npm start
 ```
 nexon/
 ├─ ops/envoy/
-│  ├─ envoy.compose.yaml       # Docker routing (service names: rest, grpc)
-│  ├─ envoy.dev.yaml   # Local routing (localhost:8000 / :50051)
-│  └─ logs/            # access logs
+│  ├─ envoy.compose.yaml     # Docker routing (service names: rest, grpc)
+│  ├─ envoy.dev.yaml         # Local routing (localhost:8000 / :50051)
+│  └─ logs/                  # access logs
 ├─ server/
-│  ├─ rest/            # FastAPI REST service; exposes /inference, /upload, /deployment
-│  ├─ grpc_service/    # Async gRPC service; protos in ./protos; stubs packaged as a wheel at build time
+│  ├─ rest/                  # FastAPI REST service; exposes /inference, /upload, /deployment
+│  ├─ grpc_service/          # Async gRPC service; protos in ./protos; stubs packaged as a wheel at build time
 │  ├─ shared/
-│  │  ├─ database.py          # MongoDB (Motor) + GridFS clients
-│  │  ├─ orchestrator.py      # shared inference orchestration
-│  │  └─ model_cache.py       # ONNXRuntime session cache (LRU/TTL)
-│  └─ tools/                  # CLI test clients & micro-benchmarks
-└─ docker-compose.yml         # mongo + rest + grpc + envoy
+│  │  ├─ database.py         # MongoDB (Motor) + GridFS clients
+│  │  ├─ orchestrator.py     # shared inference orchestration
+│  │  └─ model_cache.py      # ONNXRuntime session cache (LRU/TTL)
+│  └─ tools/                 # CLI test clients & micro-benchmarks
+└─ docker-compose.yml        # mongo + rest + grpc + envoy
 ```
 
 ---
