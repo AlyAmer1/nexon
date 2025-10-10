@@ -1,6 +1,6 @@
-# NEXON Envoy front-proxy for HOST (localhost) runs
-# - :8080 -> BOTH REST & gRPC (AUTO codec; route by gRPC matcher)
-# - :9901 -> admin
+# Envoy front proxy for local NEXON development.
+# - :8080 exposes both REST and gRPC (AUTO codec; gRPC detected via matcher)
+# - :9901 exposes the Envoy admin interface
 
 static_resources:
   listeners:
@@ -17,7 +17,8 @@ static_resources:
                 normalize_path: true
                 merge_slashes: true
                 request_headers_timeout: 5s
-                request_timeout: 60s
+                request_timeout: 0s            # Benchmark mode: disable request timeout
+                stream_idle_timeout: 0s         # Benchmark mode: disable stream idle timeout
                 stream_error_on_invalid_http_message: true
 
                 access_log:
@@ -32,9 +33,12 @@ static_resources:
                           path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
                           authority: "%REQ(:AUTHORITY)%"
                           status: "%RESPONSE_CODE%"
+                          grpc_status: "%GRPC_STATUS%"
                           duration_ms: "%DURATION%"
+                          upstream_service_time_ms: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
                           upstream_host: "%UPSTREAM_HOST%"
-                          request_id: "%REQ(X-REQUEST-ID)%"
+                          upstream_cluster: "%UPSTREAM_CLUSTER%"
+                          response_flags: "%RESPONSE_FLAGS%"
                           content_type: "%REQ(content-type)%"
 
                 route_config:
@@ -51,17 +55,21 @@ static_resources:
                         max_age: "1728000"
 
                       routes:
-                        # gRPC (idiomatic matcher) → grpc_backend
+                        # gRPC (idiomatic matcher) -> grpc_backend
                         - match: { prefix: "/", grpc: {} }
                           route:
                             cluster: grpc_backend
                             timeout: 0s
+                            retry_policy:        # Benchmark mode: disable retries
+                              num_retries: 0
 
-                        # Everything else (REST, uploads, web app calls) → FastAPI
+                        # Everything else (REST, uploads, web app calls) -> FastAPI
                         - match: { prefix: "/" }
                           route:
                             cluster: rest_backend
-                            timeout: 60s
+                            timeout: 0s          # Benchmark mode: disable request timeout
+                            retry_policy:        # Benchmark mode: disable retries
+                              num_retries: 0
 
                 http_filters:
                   - name: envoy.filters.http.cors
@@ -95,7 +103,7 @@ static_resources:
           healthy_threshold: 2
           http_health_check: { path: /healthz }
 
-    # gRPC upstream (HTTP/2 to your gRPC service)
+    # gRPC upstream (HTTP/2 to the gRPC service)
     - name: grpc_backend
       type: LOGICAL_DNS
       connect_timeout: 0.5s
@@ -117,7 +125,7 @@ static_resources:
           unhealthy_threshold: 2
           healthy_threshold: 2
           grpc_health_check:
-            # empty = overall service health; matches your server defaults
+            # empty = overall service health; matches the server defaults
             service_name: ""
 
 admin:

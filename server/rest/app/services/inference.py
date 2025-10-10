@@ -1,7 +1,7 @@
-# REST inference endpoint using the shared async ModelCache via a shared orchestrator.
+"""REST inference endpoint backed by the shared orchestrator for parity with gRPC."""
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 # Project DB handles (Motor GridFS bucket + models collection)
 from shared.database import fs, models_collection
 
-# Shared inference orchestrator (unifies REST & gRPC behavior)
+# Shared inference orchestrator (unifies REST & gRPC)
 from shared.orchestrator import (
     InferenceOrchestrator,
     InvalidInputError,
@@ -26,9 +26,16 @@ router = APIRouter(prefix="/inference", tags=["Inference"])
 class InferenceRequest(BaseModel):
     """Nested Python lists representing a single input tensor (row-major)."""
     input: list = Field(..., example=[[[0.1, 0.2, 0.3]]])
+    # Option B': optional dtype for parity with gRPC; if omitted -> derive from model
+    dtype: Optional[str] = Field(
+        None,
+        example="float32",
+        description="Optional dtype string; when omitted the orchestrator derives the dtype.",
+    )
 
 
 class InferenceResponse(BaseModel):
+    """Response payload containing the serialized first output tensor."""
     results: List[list]
 
 
@@ -44,20 +51,25 @@ class InferenceResponse(BaseModel):
 )
 async def infer(request: InferenceRequest, model_name: str):
     """
-    Contract (parity with gRPC):
+    Contract (parity with gRPC, Option B'):
     - Resolve by model *name*.
     - Use model input[0]; return only output[0].
-    - Cast JSON -> NumPy using the model's declared ONNX dtype.
+    - If request.dtype is provided, must match model's input dtype; else derive.
+    - Cast JSON -> NumPy using the (derived or requested) dtype.
     - Optional shape check tolerates dynamic dims.
     """
     try:
+        # Let orchestrator enforce dtype/shape with the same rules as gRPC.
         outputs: List[np.ndarray] = await _orch.run(
-            model_name=model_name, input_data=request.input
+            model_name=model_name,
+            input_data=request.input,
+            request_dtype_str=request.dtype,  # Option B': optional dtype string
         )
         return {"results": [o.tolist() for o in outputs]}
     except ModelNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ModelNotDeployedError as e:
+        # REST semantics remain 400 for undeployed (as in your plan)
         raise HTTPException(status_code=400, detail=str(e))
     except InvalidInputError as e:
         raise HTTPException(status_code=400, detail=str(e))

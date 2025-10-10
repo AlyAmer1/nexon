@@ -1,5 +1,5 @@
-# File: server/shared/database.py
-# Centralized MongoDB (Motor) + GridFS setup shared by FastAPI (REST) and gRPC.
+"""Centralized MongoDB/Motor configuration shared between REST and gRPC surfaces."""
+
 from __future__ import annotations
 
 import os
@@ -8,10 +8,10 @@ from typing import Optional
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 
-# --- Load .env for local dev (no effect in Docker unless env vars are missing) ---
+# Load .env for local development (no effect in Docker unless env vars are missing).
 try:
     from dotenv import load_dotenv, find_dotenv  # pip install python-dotenv
-    # Do not override variables already provided by the shell / docker-compose
+    # Do not override variables already provided by the shell or docker-compose.
     load_dotenv(find_dotenv(usecwd=True), override=False)
 except Exception:
     pass  # python-dotenv is optional
@@ -19,11 +19,11 @@ except Exception:
 log = logging.getLogger("database")
 
 def _first_env(*keys: str, default: Optional[str] = None) -> Optional[str]:
-    """Return the first non-empty os.environ value among keys, else default."""
-    for k in keys:
-        v = os.getenv(k)
-        if v:
-            return v
+    """Return the first non-empty environment value among keys, else default."""
+    for key in keys:
+        value = os.getenv(key)
+        if value:
+            return value
     return default
 
 # Prefer NEXON_* (compose), then common aliases, then a Docker-friendly default.
@@ -40,9 +40,9 @@ MONGO_DB: str = _first_env(
 SERVER_SELECTION_TIMEOUT_MS = int(os.getenv("MONGO_SERVER_SELECTION_TIMEOUT_MS", "10000"))
 UUID_REPRESENTATION = os.getenv("MONGO_UUID_REPRESENTATION", "standard")  # Motor/PyMongo option
 
-# Redact credentials in logs
+# Redact credentials in logs.
 def _redact(uri: str) -> str:
-    # mongodb://user:pass@host:port/db -> mongodb://***:***@host:port/db
+    """Mask credentials in a MongoDB URI."""
     try:
         if "@" in uri and "://" in uri:
             scheme, rest = uri.split("://", 1)
@@ -69,8 +69,9 @@ fs: AsyncIOMotorGridFSBucket = AsyncIOMotorGridFSBucket(db)
 
 log.info("MongoDB connected (uri=%s, db=%s)", _redact(MONGO_URI), MONGO_DB)
 
-# Small helper you can reuse in /readyz
+# Small helper reused by readiness probes.
 async def ping() -> bool:
+    """Return True when MongoDB responds to ping command; False otherwise."""
     try:
         await db.command("ping")
         return True

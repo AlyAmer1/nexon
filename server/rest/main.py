@@ -1,6 +1,10 @@
+"""FastAPI entrypoint for the NEXON REST surface with health and inventory routes."""
+
 from __future__ import annotations
-import os
+
 import logging
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from bson import ObjectId
@@ -16,6 +20,8 @@ from shared.database import client as mongo_client
 LOG_HEALTH = os.getenv("LOG_HEALTH", "0").lower() in ("1", "true", "yes", "on")
 
 class _HealthAccessFilter(logging.Filter):
+    """Suppress health endpoints from access logs unless explicitly enabled."""
+
     def filter(self, record: logging.LogRecord) -> bool:
         if LOG_HEALTH:
             return True
@@ -25,10 +31,10 @@ class _HealthAccessFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(_HealthAccessFilter())
 
 openapi_tags = [
-    {"name": "Upload", "description": "Upload ONNX models (status → Uploaded)."},
-    {"name": "Deployment", "description": "Deploy / undeploy models (Uploaded ↔ Deployed)."},
+    {"name": "Upload", "description": "Upload ONNX models (status -> Uploaded)."},
+    {"name": "Deployment", "description": "Deploy or undeploy models (Uploaded <-> Deployed)."},
     {"name": "Inference", "description": "Run inference on deployed models."},
-    {"name": "Inventory", "description": "List / delete models."},
+    {"name": "Inventory", "description": "List or delete models."},
 ]
 
 app = FastAPI(
@@ -40,17 +46,19 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     swagger_ui_parameters={
-        "defaultModelsExpandDepth": -1,  # hide the “Schemas” panel
+        "defaultModelsExpandDepth": -1,  # hide the "Schemas" panel
         "docExpansion": "list",          # collapse endpoints by default (tidier)
     },
 )
 
 @app.get("/healthz", include_in_schema=False)
 async def healthz():
+    """Return service liveness status."""
     return {"status": "ok"}
 
 @app.get("/readyz", include_in_schema=False)
 async def readyz():
+    """Return readiness status by pinging MongoDB."""
     try:
         await models_collection.database.command("ping")
         return {"status": "ready"}
@@ -59,17 +67,19 @@ async def readyz():
 
 @app.on_event("startup")
 async def _on_startup():
-    logging.getLogger("rest").info("REST starting…")
+    """Emit startup log entry."""
+    logging.getLogger("rest").info("REST starting...")
 
 @app.on_event("shutdown")
 async def _on_shutdown():
+    """Close shared MongoDB client and report shutdown."""
     try:
         mongo_client.close()
     except Exception:
         pass
     logging.getLogger("rest").info("REST shutdown complete.")
 
-# ✅ Include routers so everything shows in ONE Swagger (/docs)
+# Include routers so everything appears in a single OpenAPI document.
 app.include_router(upload.router)
 app.include_router(deployment.router)
 app.include_router(inference.router)
@@ -81,32 +91,40 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
+    """Return a welcome banner for the API root."""
     return {"message": "Welcome to the ONNX Inference API!"}
 
-# ------- Inventory endpoints (kept as-is) -------
+# Inventory endpoints
 @app.get("/deployedModels", tags=["Inventory"])
 async def get_deployed_models():
+    """List deployed models with serialized identifiers."""
     models = [m async for m in models_collection.find({"status": "Deployed"})]
     for m in models:
-        m["_id"] = str(m["_id"]); m["file_id"] = str(m["file_id"])
+        m["_id"] = str(m["_id"])
+        m["file_id"] = str(m["file_id"])
     return models
 
 @app.get("/uploadedModels", tags=["Inventory"])
 async def get_uploaded_models():
+    """List uploaded (not deployed) models with serialized identifiers."""
     models = [m async for m in models_collection.find({"status": "Uploaded"})]
     for m in models:
-        m["_id"] = str(m["_id"]); m["file_id"] = str(m["file_id"])
+        m["_id"] = str(m["_id"])
+        m["file_id"] = str(m["file_id"])
     return models
 
 @app.get("/allModels", tags=["Inventory"])
 async def get_all_models():
+    """List all models regardless of status with serialized identifiers."""
     models = [m async for m in models_collection.find({})]
     for m in models:
-        m["_id"] = str(m["_id"]); m["file_id"] = str(m["file_id"])
+        m["_id"] = str(m["_id"])
+        m["file_id"] = str(m["file_id"])
     return models
 
 @app.delete("/deleteModel/{model_name}/{model_version}", tags=["Inventory"])
 async def delete_model(model_name: str, model_version: int):
+    """Remove a model and its GridFS payload."""
     model = await models_collection.find_one({"name": model_name, "version": int(model_version)})
     if not model:
         raise HTTPException(status_code=404, detail="Model not found.")

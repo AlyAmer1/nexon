@@ -1,3 +1,5 @@
+"""Upload endpoints for registering ONNX models and metadata."""
+
 from __future__ import annotations
 
 import math
@@ -11,6 +13,7 @@ router = APIRouter(prefix="/upload", tags=["Upload"])
 
 
 def convert_size(size_bytes: int) -> str:
+    """Convert byte counts into human-readable units."""
     if size_bytes == 0:
         return "0B"
     size_name = ("Bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
@@ -21,6 +24,7 @@ def convert_size(size_bytes: int) -> str:
 
 
 class UploadResponse(BaseModel):
+    """Response payload returned after successfully uploading a model."""
     message: str
     model_id: str
     file_id: str
@@ -33,12 +37,7 @@ class UploadResponse(BaseModel):
     responses={400: {"description": "Only .onnx files are allowed"}},
 )
 async def upload_file(file: UploadFile = File(...)):
-    """
-    Uploads an ONNX model file and records metadata (status=Uploaded).
-    Keeps compatibility with the existing UI:
-      - Route: POST /upload/
-      - Returns: message, model_id, file_id
-    """
+    """Persist an ONNX model file to GridFS and record metadata for later deployment."""
     if not file.filename.endswith(".onnx"):
         raise HTTPException(status_code=400, detail="Only ONNX files are allowed.")
     try:
@@ -49,8 +48,12 @@ async def upload_file(file: UploadFile = File(...)):
 
         file_id = await fs.upload_from_stream(file.filename, file.file)
 
-        # NOTE: keep the same semantics as before (uses UploadFile.size)
-        size = convert_size(file.size)
+        # Preserve semantics; some servers don't expose UploadFile.size → fallback to "unknown"
+        size_bytes = getattr(file, "size", None)
+        try:
+            size = convert_size(int(size_bytes)) if size_bytes is not None else "unknown"
+        except Exception:
+            size = "unknown"
 
         # Use portable zero-padded day/month (Windows-compatible)
         upload_date = datetime.now().strftime("%d/%m/%Y")

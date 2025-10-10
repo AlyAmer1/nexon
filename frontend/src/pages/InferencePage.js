@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
+import { API_BASE } from "../config";
 
 const Inference = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
-  const selectedModelFromURL = queryParams.get("model"); 
+  const selectedModelFromURL = queryParams.get("model");
 
   const [inputs, setInputs] = useState("");
   const [results, setResults] = useState(null);
@@ -16,9 +17,9 @@ const Inference = () => {
 
   // Fetch available models from the backend
   useEffect(() => {
-    axios.get("http://127.0.0.1:8080/deployedModels")
+    axios.get(`${API_BASE}/deployedModels`)
       .then(response => {
-        setModels(response.data || []); 
+        setModels(response.data || []);
         if (selectedModelFromURL) {
           setSelectedModel(selectedModelFromURL);
         }
@@ -49,7 +50,7 @@ const Inference = () => {
     try {
       const inputData = JSON.parse(inputs);
       console.log(inputData)
-      const response = await axios.post(`http://127.0.0.1:8080/inference/infer/${selectedModel}`, {
+      const response = await axios.post(`${API_BASE}/inference/infer/${selectedModel}`, {
       input: inputData,
       headers: { "Content-Type": "application/json" }
      });
@@ -265,4 +266,3 @@ const styles = {
     position: "relative",
   },
 };
-

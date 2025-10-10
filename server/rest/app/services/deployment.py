@@ -1,4 +1,4 @@
-# server/rest/app/services/deployment.py
+"""Deployment endpoints for publishing ONNX models via the shared orchestrator."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -13,32 +13,32 @@ from shared.database import fs, models_collection
 router = APIRouter(prefix="/deployment", tags=["Deployment"])
 
 
-# --------- Models ---------
 class DeployRequest(BaseModel):
+    """Request payload for deploying an uploaded model version."""
     model_name: str
     model_id: str
 
 
 class DeployResponse(BaseModel):
+    """Response payload summarizing deployment status and endpoints."""
     message: str
     endpoints: dict  # {rest_envoy, rest_direct, grpc_envoy, grpc_direct, grpc_service}
 
 
 class UndeployRequest(BaseModel):
+    """Request payload for reverting a deployed model to uploaded status."""
     model_name: str
     model_version: int
 
 
-# --------- Helpers ---------
 def _today_str() -> str:
+    """Return today's date as DD/MM/YYYY."""
     now = datetime.now()
     return f"{now.day}/{now.month}/{now.year}"  # portable across platforms
 
 
 def _rest_urls_from_request(base_url: str, model_name: str) -> tuple[str, str]:
-    """
-    Build absolute REST URLs for Envoy and for the direct FastAPI dev port.
-    """
+    """Build REST URLs for Envoy and the direct FastAPI development port."""
     base = base_url.rstrip("/")  # e.g., http://127.0.0.1:8080
     rest_envoy = f"{base}/inference/infer/{model_name}"
 
@@ -50,9 +50,7 @@ def _rest_urls_from_request(base_url: str, model_name: str) -> tuple[str, str]:
 
 
 def _grpc_addrs_from_request(base_url: str) -> tuple[str, str, str]:
-    """
-    Derive gRPC addresses and FQMN. Envoy address comes from the same host:port as REST.
-    """
+    """Derive gRPC addresses and fully qualified method name from the request URL."""
     parsed = urlparse(base_url)
     grpc_envoy = parsed.netloc or "127.0.0.1:8080"
     grpc_direct = "127.0.0.1:50051"
@@ -60,14 +58,13 @@ def _grpc_addrs_from_request(base_url: str) -> tuple[str, str, str]:
     return grpc_envoy, grpc_direct, grpc_fqmn
 
 
-# --------- Routes ---------
 @router.post(
     "/deploy-file/",
     response_model=DeployResponse,
-    summary="Upload an ONNX file and deploy it immediately (status → Deployed)",
+    summary="Upload an ONNX file and deploy it immediately (status -> Deployed)",
 )
-async def deploy_file(req: Request, file: UploadFile = File(...)):
-    # Parity with original behavior: upload to GridFS, new version, mark Deployed
+async def deploy_file(http_request: Request, file: UploadFile = File(...)):
+    """Upload an ONNX model and mark the new version as deployed."""
     if not file.filename.endswith(".onnx"):
         raise HTTPException(status_code=400, detail="Only ONNX files are allowed.")
 
@@ -83,8 +80,8 @@ async def deploy_file(req: Request, file: UploadFile = File(...)):
     file_id = await fs.upload_from_stream(file.filename, file.file)
 
     today = _today_str()
-    rest_envoy, rest_direct = _rest_urls_from_request(str(req.base_url), file.filename)
-    grpc_envoy, grpc_direct, grpc_fqmn = _grpc_addrs_from_request(str(req.base_url))
+    rest_envoy, rest_direct = _rest_urls_from_request(str(http_request.base_url), file.filename)
+    grpc_envoy, grpc_direct, grpc_fqmn = _grpc_addrs_from_request(str(http_request.base_url))
 
     meta = {
         "file_id": str(file_id),
@@ -92,7 +89,7 @@ async def deploy_file(req: Request, file: UploadFile = File(...)):
         "upload": today,
         "version": new_version,
         "deploy": today,
-        "size": getattr(file, "size", "—"),  # size may not always be available
+        "size": getattr(file, "size", "unknown"),  # size may not always be available
         "status": "Deployed",
         "endpoint": rest_envoy,  # keep legacy DB field
     }
@@ -113,29 +110,30 @@ async def deploy_file(req: Request, file: UploadFile = File(...)):
 @router.post(
     "/deploy-model/",
     response_model=DeployResponse,
-    summary="Deploy an already uploaded model (status → Deployed)",
+    summary="Deploy an already uploaded model (status -> Deployed)",
 )
-async def deploy_model(request: DeployRequest, base_url_request: Request):
-    models = [m async for m in models_collection.find({"name": request.model_name})]
+async def deploy_model(deploy_request: DeployRequest, http_request: Request):
+    """Mark an uploaded model version as deployed."""
+    models = [m async for m in models_collection.find({"name": deploy_request.model_name})]
     for m in models:
         if m.get("status") == "Deployed":
-            if str(m["_id"]) == request.model_id:
+            if str(m["_id"]) == deploy_request.model_id:
                 raise HTTPException(status_code=400, detail="This version is already deployed!")
             raise HTTPException(status_code=400, detail="Another version of this model is already deployed!")
 
     today = _today_str()
-    rest_envoy, rest_direct = _rest_urls_from_request(str(base_url_request.base_url), request.model_name)
-    grpc_envoy, grpc_direct, grpc_fqmn = _grpc_addrs_from_request(str(base_url_request.base_url))
+    rest_envoy, rest_direct = _rest_urls_from_request(str(http_request.base_url), deploy_request.model_name)
+    grpc_envoy, grpc_direct, grpc_fqmn = _grpc_addrs_from_request(str(http_request.base_url))
 
     updated = await models_collection.update_one(
-        {"_id": ObjectId(request.model_id)},
+        {"_id": ObjectId(deploy_request.model_id)},
         {"$set": {"status": "Deployed", "deploy": today, "endpoint": rest_envoy}},
     )
     if updated.modified_count == 0:
         raise HTTPException(status_code=400, detail="Model does not exist")
 
     return {
-        "message": f"Model {request.model_name} deployed successfully!",
+        "message": f"Model {deploy_request.model_name} deployed successfully!",
         "endpoints": {
             "rest_envoy": rest_envoy,
             "rest_direct": rest_direct,
@@ -148,16 +146,17 @@ async def deploy_model(request: DeployRequest, base_url_request: Request):
 
 @router.put(
     "/undeploy/{model_name}",
-    summary="Undeploy a model (status → Uploaded)",
+    summary="Undeploy a model (status -> Uploaded)",
 )
-async def undeploy_model(model_name: str, request: UndeployRequest):
-    model = await models_collection.find_one({"name": model_name, "version": int(request.model_version)})
+async def undeploy_model(model_name: str, undeploy_request: UndeployRequest):
+    """Revert a deployed model version to the uploaded state."""
+    model = await models_collection.find_one({"name": model_name, "version": int(undeploy_request.model_version)})
     if not model:
         raise HTTPException(status_code=404, detail="Model not found.")
     if model.get("status") != "Deployed":
         raise HTTPException(status_code=400, detail="Model is not deployed.")
 
-    upd = await models_collection.update_one({"_id": model["_id"]}, {"$set": {"status": "Uploaded"}})
-    if upd.modified_count == 0:
+    update_result = await models_collection.update_one({"_id": model["_id"]}, {"$set": {"status": "Uploaded"}})
+    if update_result.modified_count == 0:
         raise HTTPException(status_code=500, detail="Failed to undeploy model.")
-    return {"message": f"Model '{model_name}' (v{request.model_version}) undeployed successfully."}
+    return {"message": f"Model '{model_name}' (v{undeploy_request.model_version}) undeployed successfully."}

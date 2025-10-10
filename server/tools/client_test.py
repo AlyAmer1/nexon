@@ -1,13 +1,8 @@
-"""
-NEXON Test Client for gRPC and REST Inference
+"""NEXON client for exercising gRPC and REST inference endpoints.
 
-This script provides performance tests and functional validation for the
-inference backends. It supports:
-  • Built-in preset input (sigmoid)
-  • Custom input from YAML (recommended) or JSON
-
-Run from the project root's ./server directory.
-See the README section “NEXON Test Clients & Benchmarks” for examples.
+The tool can load preset or user-supplied tensors, send them to the live
+services, and optionally compare REST and gRPC results for parity analysis.
+Run from the repository's ``server/`` directory to ensure module imports work.
 """
 from __future__ import annotations
 
@@ -26,7 +21,13 @@ import yaml  # PyYAML
 import inference_pb2 as pb
 import inference_pb2_grpc as pb_grpc
 
-# -------- proto dtype <-> numpy dtype maps --------
+
+GRPC_OPTS = [
+    ("grpc.max_send_message_length", 200 * 1024 * 1024),    # 200 MiB
+    ("grpc.max_receive_message_length", 200 * 1024 * 1024), # 200 MiB
+]
+
+# Type maps (protobuf enum <-> NumPy dtype)
 PB_TO_NP = {
     pb.DT_FLOAT32: np.float32,
     pb.DT_FLOAT64: np.float64,
@@ -36,26 +37,30 @@ PB_TO_NP = {
 }
 NP_TO_PB = {v: k for k, v in PB_TO_NP.items()}
 
-# ---------------------- helpers: bytes/arrays ----------------------
+# Byte/array helpers
 def as_le_bytes(arr: np.ndarray) -> bytes:
+    """Return little-endian row-major bytes for the provided NumPy array."""
     if arr.dtype == np.bool_:
-        # booleans transported as bytes
+        # Booleans are transported as bytes.
         return np.ascontiguousarray(arr.astype(np.uint8, copy=False)).tobytes(order="C")
     le = arr.dtype.newbyteorder("<")
     return np.ascontiguousarray(arr.astype(le, copy=False)).tobytes(order="C")
 
 def numpy_to_request_tensor(x: np.ndarray, name: str = "") -> pb.RequestTensor:
+    """Construct a protobuf RequestTensor from a NumPy array."""
     return pb.RequestTensor(name=name, dims=list(x.shape), tensor_content=as_le_bytes(x))
 
 def response_tensor_to_numpy(t: pb.ResponseTensor) -> np.ndarray:
+    """Convert a protobuf ResponseTensor back into a NumPy array."""
     np_dtype = PB_TO_NP.get(t.data_type)
     if np_dtype is None:
         raise ValueError(f"Unsupported response dtype enum: {t.data_type}")
     arr = np.frombuffer(t.tensor_content, dtype=np_dtype)
     return arr.reshape(tuple(t.dims), order="C")
 
-# ---------------------- preset inputs ----------------------
+# Preset inputs
 def preset_sigmoid() -> np.ndarray:
+    """Return the built-in sigmoid sample tensor for quick smoke testing."""
     data = [
         [[0.90611831,0.55083885,0.60356778,0.4017955,0.93486481],
          [0.4901685,0.13770382,0.18119458,0.96234953,0.73380571],
@@ -72,10 +77,11 @@ def preset_sigmoid() -> np.ndarray:
     ]
     return np.array(data, dtype=np.float32)
 
-# ---------------------- REST (Session reuse) ----------------------
+# REST client (session reuse)
 _SESSION: Optional[requests.Session] = None
 
 def _get_session(fresh_conn: bool) -> requests.Session:
+    """Return a cached requests.Session unless fresh_conn forces a new handle."""
     global _SESSION
     if fresh_conn:
         return requests.Session()
@@ -84,42 +90,52 @@ def _get_session(fresh_conn: bool) -> requests.Session:
     return _SESSION
 
 def post_rest_infer(base_url: str, model_name: str, x: np.ndarray, fresh_conn: bool) -> Tuple[List, float, int, int]:
+    """Send a REST inference request and return response payload and timings."""
     url = base_url.rstrip("/") + f"/{model_name}"
     payload = {"input": x.tolist()}
     data = json.dumps(payload).encode("utf-8")
-    s = _get_session(fresh_conn)
-    t0 = time.perf_counter()
-    r = s.post(url, headers={"Content-Type": "application/json"}, data=data, timeout=60)
-    elapsed = time.perf_counter() - t0
+    if fresh_conn:
+        # Ensure ephemeral session is closed after use.
+        with requests.Session() as s:
+            t0 = time.perf_counter()
+            r = s.post(url, headers={"Content-Type": "application/json"}, data=data, timeout=60)
+            elapsed = time.perf_counter() - t0
+    else:
+        s = _get_session(fresh_conn=False)
+        t0 = time.perf_counter()
+        r = s.post(url, headers={"Content-Type": "application/json"}, data=data, timeout=60)
+        elapsed = time.perf_counter() - t0
     r.raise_for_status()
     body = r.content
     obj = r.json()
     return obj["results"], elapsed, len(data), len(body)
 
-# ---------------------- gRPC (Channel reuse) ----------------------
+# gRPC client (channel reuse)
 _GRPC_CHANNEL: Optional[grpc.aio.Channel] = None
 _GRPC_STUB: Optional[pb_grpc.InferenceServiceStub] = None
 _GRPC_ADDR: Optional[str] = None
 
 async def _get_grpc_stub(addr: str, fresh_conn: bool) -> pb_grpc.InferenceServiceStub:
+    """Return a cached gRPC stub unless fresh_conn forces a new channel."""
     global _GRPC_CHANNEL, _GRPC_STUB, _GRPC_ADDR
     if fresh_conn:
         ch = grpc.aio.insecure_channel(addr)
         return pb_grpc.InferenceServiceStub(ch)
     if _GRPC_STUB is None or _GRPC_ADDR != addr:
         _GRPC_ADDR = addr
-        _GRPC_CHANNEL = grpc.aio.insecure_channel(addr)
+        _GRPC_CHANNEL = grpc.aio.insecure_channel(addr, options=GRPC_OPTS)
         _GRPC_STUB = pb_grpc.InferenceServiceStub(_GRPC_CHANNEL)
     return _GRPC_STUB
 
 async def predict_grpc(addr: str, model_name: str, x: np.ndarray,
                        deadline_sec: float, wait_for_ready: bool,
                        fresh_conn: bool) -> Tuple[List[np.ndarray], float, int, int]:
+    """Execute the gRPC Predict RPC and capture outputs, latency, and sizes."""
     req = pb.PredictRequest(model_name=model_name, input=numpy_to_request_tensor(x))
     req_bytes = req.SerializeToString()
 
     if fresh_conn:
-        async with grpc.aio.insecure_channel(addr) as channel:
+        async with grpc.aio.insecure_channel(addr, options=GRPC_OPTS) as channel:
             stub = pb_grpc.InferenceServiceStub(channel)
             t0 = time.perf_counter()
             reply = await stub.Predict(req, timeout=deadline_sec, wait_for_ready=wait_for_ready)
@@ -134,15 +150,18 @@ async def predict_grpc(addr: str, model_name: str, x: np.ndarray,
     outs = [response_tensor_to_numpy(t) for t in reply.outputs]
     return outs, elapsed, len(req_bytes), len(rep_bytes)
 
-# ---------------------- compare + print ----------------------
+# Compare and print
 def summarize_array(tag: str, arr: np.ndarray, n: int = 8) -> str:
+    """Return a short text summary for quick inspection of tensor statistics."""
     flat = arr.ravel()
     sample = flat[:n].tolist()
+    mn = float(flat.min()) if flat.size else 0.0
+    mx = float(flat.max()) if flat.size else 0.0
     return (f"{tag} shape={tuple(arr.shape)} dtype={arr.dtype} "
-            f"min={float(flat.min(initial=0)):.6g} max={float(flat.max(initial=0)):.6g} "
-            f"sample={sample}")
+            f"min={mn:.6g} max={mx:.6g} sample={sample}")
 
 def compare_arrays(a: np.ndarray, b: np.ndarray, rtol: float, atol: float) -> Tuple[bool, float, float]:
+    """Compare arrays using np.allclose and report max absolute and relative error."""
     ok = bool(np.allclose(a, b, rtol=rtol, atol=atol))
     diff = np.abs(a - b)
     max_abs = float(np.max(diff)) if diff.size else 0.0
@@ -156,8 +175,9 @@ def compare_arrays(a: np.ndarray, b: np.ndarray, rtol: float, atol: float) -> Tu
         max_rel = float(max_rel_np)
     return ok, max_abs, max_rel
 
-# ---------------------- input loaders ----------------------
+# Input loaders
 def load_input_from_json(path: str, dtype_str: str) -> np.ndarray:
+    """Load a NumPy array from a JSON file with the supplied dtype."""
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     dmap = {"float32": np.float32, "float64": np.float64, "int32": np.int32, "int64": np.int64, "bool": np.bool_}
@@ -166,6 +186,7 @@ def load_input_from_json(path: str, dtype_str: str) -> np.ndarray:
     return np.asarray(data, dtype=dmap[dtype_str])
 
 def load_input_from_yaml(path: str) -> np.ndarray:
+    """Load a NumPy array from a YAML file containing {data, dtype}."""
     with open(path, "r", encoding="utf-8") as f:
         obj = yaml.safe_load(f)
     if not isinstance(obj, dict) or "data" not in obj or "dtype" not in obj:
@@ -176,8 +197,9 @@ def load_input_from_yaml(path: str) -> np.ndarray:
         raise SystemExit("--input dtype must be one of: float32|float64|int32|int64|bool")
     return np.asarray(obj["data"], dtype=dmap[dtype_str])
 
-# ---------------------- args ----------------------
+# CLI args
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments describing connection settings and payload inputs."""
     p = argparse.ArgumentParser(
         description="NEXON client for gRPC (Envoy 8080 by default) with optional REST parity checks."
     )
@@ -207,8 +229,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--deadline", type=float, default=60.0, help="gRPC per-call deadline (seconds)")
     return p.parse_args()
 
-# ---------------------- main ----------------------
+# Main
 async def main_async(args: argparse.Namespace) -> None:
+    """Drive the requested test plan according to parsed CLI arguments."""
     global _GRPC_CHANNEL, _SESSION
 
     # Choose input
@@ -221,7 +244,7 @@ async def main_async(args: argparse.Namespace) -> None:
             raise SystemExit("--json requires --dtype")
         x = load_input_from_json(args.json_path, args.dtype)
 
-    # --- gRPC Run ---
+    # gRPC run
     outs_grpc_last: List[np.ndarray] = []
     if not args.rest_only:
         total_ms_grpc = 0.0
@@ -241,7 +264,7 @@ async def main_async(args: argparse.Namespace) -> None:
             print(" ", summarize_array(f"[grpc output[{i}]]", arr))
         print(f"  gRPC avg time: {avg_ms_grpc:.2f} ms | sizes (last): req={req_sz_last}B rep={rep_sz_last}B")
 
-    # --- REST Run ---
+    # REST run
     if args.compare_rest or args.rest_only:
         total_ms_rest = 0.0
         outs_rest_last: List[np.ndarray] = []
@@ -263,20 +286,21 @@ async def main_async(args: argparse.Namespace) -> None:
             print(" ", summarize_array(f"[rest output[{i}]]", arr))
         print(f"  REST avg time: {avg_ms_rest:.2f} ms | sizes (last): req={rest_req_last}B rep={rest_rep_last}B")
 
-        # --- Parity Check ---
+        # Parity check
         if args.compare_rest and outs_grpc_last and outs_rest_last:
             ok, max_abs, max_rel = compare_arrays(outs_grpc_last[0], outs_rest_last[0], rtol=args.rtol, atol=args.atol)
-            status = "PASS ✅" if ok else "FAIL ❌"
+            status = "PASS" if ok else "FAIL"
             print(f"\nPARITY [{status}] rtol={args.rtol} atol={args.atol}")
             print(f"  max_abs_err={max_abs:.3e} | max_rel_err={max_rel:.3e}")
 
-    # --- Cleanup ---
+    # Cleanup
     if _GRPC_CHANNEL:
         await _GRPC_CHANNEL.close()
     if _SESSION:
         _SESSION.close()
 
 def main() -> None:
+    """Entry point for CLI execution."""
     args = parse_args()
     asyncio.run(main_async(args))
 

@@ -1,61 +1,66 @@
-// File: server/grpc_service/protos/inference.proto
-// Version: 2.0 (Final, Thesis-Parity & Production-Ready) | Author: Aly Amer | Date: 08.09.2025
-// Implements a scientifically valid request contract and a usable response contract.
+// NEXON inference gRPC API (version 3.0).
+// Purpose: specify RPC and message contracts that mirror REST POST /inference/infer/{model_name}
+
+// Request contract: resolve models by name, bind to input[0], and tolerate missing dtype metadata.
+// Response contract: expose output[0] with explicit dtype for unambiguous decoding.
 syntax = "proto3";
 
 package nexon.grpc.inference.v1;
 
 service InferenceService {
-  // Unary RPC that mirrors the functionality of the POST /infer/{model_name} REST endpoint.
+  // Unary RPC mirroring REST POST /inference/infer/{model_name}.
+  // Parity rule: bind to model input[0] and return only output[0].
   rpc Predict(PredictRequest) returns (PredictReply);
 }
 
 // --- Request/Reply Messages ---
 
 message PredictRequest {
-  // Matches the 'model_name' path parameter in the REST API.
+  // Matches the {model_name} path parameter in the REST API.
   string model_name = 1;
 
-  // A single input tensor, using the request-specific tensor message.
+  // Single input tensor envelope for requests.
   RequestTensor input = 2;
 }
 
 message PredictReply {
-  // A list of output tensors, using the response-specific tensor message.
+  // Model outputs; for parity only outputs[0] is populated.
   repeated ResponseTensor outputs = 1;
 }
 
 // --- Tensor Definitions ---
 
-// Tensor for requests: The client does NOT provide the data_type.
-// This ensures the gRPC server's workload perfectly mirrors the REST server's workload,
-// as the server must derive the data type from the ONNX model's metadata.
+// Request tensor:
+// Clients may provide data_type. If omitted (DT_UNSPECIFIED), the server derives the dtype
+// from the model's first input (ONNX metadata) to preserve parity with REST clients.
 message RequestTensor {
-  // The shape of the tensor (e.g., [1, 28, 28]).
+  // Tensor shape in row-major order (e.g., [1, 28, 28]); must be non-empty.
   repeated int64 dims = 1;
-  // The optional name of the tensor.
+  // Optional logical name; if set, must match model input[0].name.
   string name = 2;
-  // The raw tensor content in row-major (C-order), little-endian format.
+  // Raw tensor bytes in row-major (C-order), little-endian encoding.
   bytes tensor_content = 3;
+  // Optional explicit element type. DT_UNSPECIFIED means derive from model input[0].
+  DataType data_type = 4;
 }
 
-// Tensor for responses: The server MUST provide the data_type.
-// This is essential for the client to correctly decode the raw tensor_content bytes.
+// Response tensor:
+// The server must set data_type so clients can decode tensor_content correctly.
 message ResponseTensor {
   repeated int64 dims = 1;
   string name = 2;
   bytes tensor_content = 3;
-  DataType data_type = 4; // The crucial difference for usability.
+  DataType data_type = 4;
 }
 
 // --- Enum Definition ---
 
 enum DataType {
-  DT_UNSPECIFIED = 0;
+  DT_UNSPECIFIED = 0; // Server derives from model input metadata (default).
   DT_FLOAT32 = 1;
   DT_FLOAT64 = 2;
   DT_INT32   = 3;
   DT_INT64   = 4;
   DT_BOOL    = 5;
-  DT_STRING  = 6;
+  DT_STRING  = 6;     // Reserved for future use if string tensors are introduced.
 }

@@ -1,6 +1,4 @@
-# =========================
-# NEXON – developer Makefile
-# =========================
+# NEXON local developer Makefile
 #
 # Usage:
 #   make help
@@ -9,7 +7,7 @@
 #   make clean            # remove venv and local stubs
 #   make dist-clean       # also remove Docker images (volumes untouched)
 
-# -------- Config --------
+# Config
 VENV ?= .venv
 PY    := $(VENV)/bin/python
 PIP   := $(VENV)/bin/pip
@@ -19,10 +17,10 @@ WHEEL_GLOB   := server/stubs/dist/*.whl
 
 .DEFAULT_GOAL := help
 
-# -------- Targets --------
+# Targets
 .PHONY: help dev-bootstrap ide-ready init-env venv dev-deps proto wheel install-stubs install-editable import-check check-versions \
         clean dist-clean docker-build docker-up docker-down \
-        run-rest run-grpc run-envoy-dev run-mongo-docker run-mongo-native
+        run-rest run-rest-reload run-grpc run-envoy-dev run-mongo-docker run-mongo-native
 
 help:
 	@echo "Targets:"
@@ -36,8 +34,9 @@ help:
 	@echo "  make init-env         - Create a default .env at repo root if missing"
 	@echo "  make check-versions   - Print grpc/grpcio-tools/protobuf versions"
 	@echo "  make import-check     - Sanity import check (inference_pb2*, rest.main, shared.database)"
-	@echo "  --- Local run helpers (no venv activation needed) ---"
+	@echo "  Local run helpers (no venv activation needed):"
 	@echo "  make run-rest         - Start FastAPI on :8000"
+	@echo "  make run-rest-reload  - Start FastAPI on :8000 with --reload"
 	@echo "  make run-grpc         - Start gRPC server on :50051"
 	@echo "  make run-envoy-dev    - Start Envoy (local) on :8080"
 	@echo "  make run-mongo-docker - Start MongoDB in Docker on :27017"
@@ -53,8 +52,11 @@ dev-bootstrap: init-env venv dev-deps proto install-stubs install-editable impor
 	@echo "       make run-grpc           # gRPC on :50051"
 	@echo "       make run-envoy-dev      # Envoy on :8080 (local)"
 	@echo "  Note: Point your IDE to the project venv so imports resolve:"
-	@echo "       • PyCharm/IntelliJ: Settings → Project: Python Interpreter → Add → Existing → .venv/bin/python"
-	@echo "       • VS Code: Command Palette → Python: Select Interpreter → pick .venv"
+	@echo "       - PyCharm/IntelliJ: Settings -> Project: Python Interpreter -> Add -> Existing -> .venv/bin/python"
+	@echo "       - VS Code: Command Palette -> Python: Select Interpreter -> pick .venv"
+
+# Alias mentioned in help
+ide-ready: dev-bootstrap
 
 # 0) Create .env if missing (prefer copying .env.example; else write defaults)
 init-env:
@@ -96,7 +98,7 @@ wheel: proto
 install-stubs: wheel
 	$(PIP) install --force-reinstall $(WHEEL_GLOB)
 
-# 6) Install your app code as a package (editable) — requires pyproject.toml at repo root
+# 6) Install your app code as a package (editable) - requires pyproject.toml at repo root
 install-editable:
 	$(PIP) install -e .
 
@@ -108,7 +110,7 @@ import-check:
 check-versions:
 	$(PY) -c "from importlib import metadata as m; import grpc, google.protobuf as pb; print('grpcio=', getattr(grpc,'__version__','?')); print('grpcio-tools=', m.version('grpcio-tools')); print('protobuf=', pb.__version__)"
 
-# -------- Local run helpers (foreground; stop with Ctrl-C) --------
+# Local run helpers (foreground; stop with Ctrl-C)
 run-rest:
 	$(PY) -m uvicorn rest.main:app --host 127.0.0.1 --port 8000
 
@@ -134,7 +136,7 @@ run-mongo-native:
 	}
 	mongod --dbpath $$HOME/data/db
 
-# -------- Docker helpers --------
+# Docker helpers
 docker-build:
 	docker compose build --no-cache
 
@@ -144,7 +146,7 @@ docker-up:
 docker-down:
 	docker compose down
 
-# -------- Cleanup --------
+# Cleanup
 clean:
 	rm -rf $(VENV) server/stubs
 

@@ -144,7 +144,7 @@ npm start
 ```
 nexon/
 ├─ ops/envoy/
-│  ├─ envoy.yaml       # Docker routing (service names: rest, grpc)
+│  ├─ envoy.compose.yaml       # Docker routing (service names: rest, grpc)
 │  ├─ envoy.dev.yaml   # Local routing (localhost:8000 / :50051)
 │  └─ logs/            # access logs
 ├─ server/
