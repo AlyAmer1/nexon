@@ -1,4 +1,4 @@
-# Async inference orchestrator shared by REST and gRPC.
+"""Async inference orchestrator shared by REST and gRPC entry points."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ import onnxruntime as ort
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 
-from .model_cache import ModelCache
 import inference_pb2 as pb
+from .model_cache import ModelCache
 
 
-# ---------- Domain errors surfaced to API layers ----------
+# Domain errors surfaced to API layers.
 
 class ModelNotFoundError(Exception):
     """No document exists for the given model name."""
@@ -31,9 +31,9 @@ class InvalidInputError(Exception):
     pass
 
 
-# ---------- Helpers ----------
+# Helper constants and utilities.
 
-# ONNX type → NumPy dtype (little-endian where applicable)
+# ONNX type -> NumPy dtype (little-endian where applicable)
 ONNX_TO_NP = {
     "tensor(float)":   np.dtype("<f4"),   # float32
     "tensor(float32)": np.dtype("<f4"),
@@ -45,7 +45,7 @@ ONNX_TO_NP = {
     "tensor(boolean)": np.dtype(np.bool_),
 }
 
-# REST string → NumPy dtype (used when clients specify dtype by name)
+# REST string -> NumPy dtype (used when clients specify dtype by name)
 STR_TO_NP = {
     "float32": np.dtype("<f4"),
     "float64": np.dtype("<f8"),
@@ -54,11 +54,11 @@ STR_TO_NP = {
     "bool":    np.dtype(np.bool_),
 }
 
-# Sentinels to preserve semantics for gRPC request data_type
+# Sentinels to preserve semantics for gRPC request data_type.
 DT_UNSPECIFIED_SENTINEL = object()   # means: derive dtype from model
 DT_UNSUPPORTED_SENTINEL = object()   # means: explicitly unsupported over raw-bytes path
 
-# Centralized proto enum → NumPy dtype (imported by gRPC server)
+# Centralized proto enum -> NumPy dtype (imported by gRPC server)
 # - UNSPECIFIED -> DT_UNSPECIFIED_SENTINEL (derive from model)
 # - STRING      -> DT_UNSUPPORTED_SENTINEL (reject in raw-bytes path)
 PROTO_TO_NP = {
@@ -73,7 +73,7 @@ PROTO_TO_NP = {
 
 
 def _shape_compatible(expected, actual) -> bool:
-    """True if 'actual' matches 'expected' shape treating None/-1/symbolic as wildcards."""
+    """Return True when actual shape matches expected, treating None/-1/symbolic as wildcards."""
     try:
         exp = list(expected)
         act = list(actual)
@@ -117,12 +117,12 @@ def _numpy_from_bytes(buf: bytes, dims: Sequence[int], dtype: np.dtype) -> np.nd
     return np.ascontiguousarray(arr).reshape(tuple(dims))
 
 
-# ---------- Orchestrator ----------
+# Orchestrator implementation.
 
 @dataclass
 class InferenceOrchestrator:
     """
-    Coordinates: DB lookup → GridFS → ModelCache → ONNX Runtime.
+    Coordinates: DB lookup -> GridFS -> ModelCache -> ONNX Runtime.
 
     One instance per process is fine; it holds an in-process cache only.
     """
@@ -132,12 +132,13 @@ class InferenceOrchestrator:
 
     @property
     def cache(self) -> ModelCache:
-        # Lazy init to keep construction light.
+        """Return the lazily constructed ModelCache."""
         if self._cache is None:
             self._cache = ModelCache(gridfs_db=self.gridfs_bucket)
         return self._cache
 
     async def _resolve_deployed_file_id(self, model_name: str) -> ObjectId:
+        """Return the GridFS file_id for the deployed version of model_name."""
         docs = await self.models_collection.find({"name": model_name}).to_list(None)
         if not docs:
             raise ModelNotFoundError(f"Model '{model_name}' does not exist.")
@@ -147,12 +148,13 @@ class InferenceOrchestrator:
         raise ModelNotDeployedError(f"Model '{model_name}' has no deployed version.")
 
     async def _load_session(self, file_id: ObjectId) -> ort.InferenceSession:
+        """Retrieve an ONNX Runtime session from the shared cache."""
         sess = await self.cache.get_session(file_id)
         if sess is None:
             raise RuntimeError("Failed to load ONNX session from cache.")
         return sess
 
-    # -------- REST path: JSON lists → NumPy (Option B′: optional dtype) --------
+    # REST path: JSON lists -> NumPy (Option B': optional dtype).
     async def run(
             self,
             *,
@@ -161,10 +163,20 @@ class InferenceOrchestrator:
             request_dtype_str: Optional[str] = None,
     ) -> List[np.ndarray]:
         """
-        Resolve deployed model by name, load session from cache, and execute output[0]
-        using input bound to input[0]. Returns a list with one NumPy array.
+        Execute inference for REST clients and return a single NumPy tensor.
 
-        If request_dtype_str is provided, it must match the model's input dtype.
+        Args:
+            model_name: Registered model identifier.
+            input_data: JSON-compatible nested lists representing input[0].
+            request_dtype_str: Optional dtype string supplied by REST clients.
+
+        Returns:
+            List containing output[0] as a NumPy array.
+
+        Raises:
+            ModelNotFoundError: When the model does not exist.
+            ModelNotDeployedError: When no deployed version is available.
+            InvalidInputError: When dtype, shape, or name validation fails.
         """
         file_id = await self._resolve_deployed_file_id(model_name)
         session = await self._load_session(file_id)
@@ -201,7 +213,7 @@ class InferenceOrchestrator:
         outputs = session.run([out0_name], {in_name: arr})
         return [np.asarray(outputs[0])]
 
-    # -------- gRPC path: raw bytes + dims → NumPy (Option B′: optional dtype) --------
+    # gRPC path: raw bytes + dims -> NumPy (Option B': optional dtype).
     async def run_from_bytes(
             self,
             *,
@@ -212,11 +224,22 @@ class InferenceOrchestrator:
             request_dtype: Optional[np.dtype] = None,
     ) -> List[np.ndarray]:
         """
-        Same as `run`, but accepts a pre-serialized tensor:
-        - dims: shape of the input
-        - raw_bytes: row-major tensor bytes
-        - provided_name: optional; if given, must match model input[0].name
-        - request_dtype: optional explicit dtype (numpy dtype). If None -> derive from model.
+        Execute inference for gRPC clients given serialized tensor bytes.
+
+        Args:
+            model_name: Registered model identifier.
+            dims: Tensor dimensions supplied by the client.
+            raw_bytes: Row-major tensor bytes received over gRPC.
+            provided_name: Optional tensor name that must match model input[0].
+            request_dtype: Optional np.dtype derived from proto enumeration.
+
+        Returns:
+            List containing output[0] as a NumPy array.
+
+        Raises:
+            ModelNotFoundError: When the model does not exist.
+            ModelNotDeployedError: When no deployed version is available.
+            InvalidInputError: When dtype, shape, or name validation fails.
         """
         file_id = await self._resolve_deployed_file_id(model_name)
         session = await self._load_session(file_id)

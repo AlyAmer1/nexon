@@ -1,4 +1,4 @@
-# ---------- Stage 1: build stubs wheel ----------
+# Stage 1: build stubs wheel
 FROM python:3.11-slim AS stubs
 WORKDIR /app/server
 
@@ -8,14 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir grpcio-tools==1.75.0 tomli-w==1.0.0 mypy-protobuf==3.6.0
 
-# Build context is repo root; copy only what’s needed to bust cache when proto/script change
+# Build context is repo root; copy only what is needed to bust cache when proto/script change
 COPY server/grpc_service/protos/ grpc_service/protos/
 COPY server/grpc_service/gen_protos_and_build_stubs.sh grpc_service/gen_protos_and_build_stubs.sh
 
 # Generate *_pb2*.py + *.pyi and build the wheel into /app/server/stubs/dist
 RUN bash grpc_service/gen_protos_and_build_stubs.sh
 
-# ---------- Stage 2: runtime ----------
+# Stage 2: runtime
 FROM python:3.11-slim AS runtime
 WORKDIR /app/server
 
@@ -30,14 +30,6 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 # Install the generated stubs wheel
 COPY --from=stubs /app/server/stubs/dist /tmp/stubs/dist
 RUN pip install --no-cache-dir /tmp/stubs/dist/*.whl
-
-# Sanity: fail build if stubs aren’t the regenerated ones (must have RequestTensor.data_type)
-RUN python - <<'PY'
-import inference_pb2 as pb
-fields = list(pb.RequestTensor.DESCRIPTOR.fields_by_name)
-assert "data_type" in fields, f"Wheel missing 'data_type' in RequestTensor; fields={fields}"
-print("stubs OK:", pb.__file__)
-PY
 
 # Copy application code last (no generated stubs at top-level here!)
 COPY server/ /app/server

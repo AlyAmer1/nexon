@@ -1,4 +1,4 @@
-# REST inference endpoint using the shared async ModelCache via a shared orchestrator.
+"""REST inference endpoint backed by the shared orchestrator for parity with gRPC."""
 from __future__ import annotations
 
 from typing import List, Optional
@@ -26,11 +26,16 @@ router = APIRouter(prefix="/inference", tags=["Inference"])
 class InferenceRequest(BaseModel):
     """Nested Python lists representing a single input tensor (row-major)."""
     input: list = Field(..., example=[[[0.1, 0.2, 0.3]]])
-    # Option B′: OPTIONAL dtype for parity with gRPC; if omitted -> derive from model
-    dtype: Optional[str] = Field(None, example="float32")
+    # Option B': optional dtype for parity with gRPC; if omitted -> derive from model
+    dtype: Optional[str] = Field(
+        None,
+        example="float32",
+        description="Optional dtype string; when omitted the orchestrator derives the dtype.",
+    )
 
 
 class InferenceResponse(BaseModel):
+    """Response payload containing the serialized first output tensor."""
     results: List[list]
 
 
@@ -46,7 +51,7 @@ class InferenceResponse(BaseModel):
 )
 async def infer(request: InferenceRequest, model_name: str):
     """
-    Contract (parity with gRPC, Option B′):
+    Contract (parity with gRPC, Option B'):
     - Resolve by model *name*.
     - Use model input[0]; return only output[0].
     - If request.dtype is provided, must match model's input dtype; else derive.
@@ -58,7 +63,7 @@ async def infer(request: InferenceRequest, model_name: str):
         outputs: List[np.ndarray] = await _orch.run(
             model_name=model_name,
             input_data=request.input,
-            request_dtype_str=request.dtype,  # Option B′: optional dtype string
+            request_dtype_str=request.dtype,  # Option B': optional dtype string
         )
         return {"results": [o.tolist() for o in outputs]}
     except ModelNotFoundError as e:

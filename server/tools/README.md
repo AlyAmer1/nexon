@@ -103,7 +103,8 @@ The YAML file contains comments and a dtype field. No `--dtype` flag is needed w
 ```text
 --model-name <str>             Deployed ONNX model name (e.g., sigmoid.onnx)
 --preset sigmoid               Built-in input generator
---input <path>                 YAML or JSON file (includes dtype)
+--input <path>                 YAML file (contains dtype)
+--json <path>                  JSON file (use with --dtype)
 --compare-rest                 Run gRPC then REST and compare outputs
 --rest-only                    Only run REST requests
 --iters <int>                  Repeat N times to compute averages

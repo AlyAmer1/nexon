@@ -1,17 +1,19 @@
-# Async gRPC inference server using the shared orchestrator (parity with REST /infer/{model_name}).
+"""Async gRPC inference server mirrored to the REST /infer/{model_name} endpoint."""
 
 from __future__ import annotations
-import os
-import sys
+
 import asyncio
+import functools
 import logging
+import os
+import signal
+import sys
 import time
 import uuid
-import numpy as np
-import grpc
-import signal
-import functools
 from typing import Any, Optional
+
+import grpc
+import numpy as np
 
 from dotenv import load_dotenv
 
@@ -39,7 +41,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 load_dotenv()  # find server/.env when run from repo root or ./server
 
 
-# -------------------------- logging ------------------------------------------
+# Logging configuration
 RESET   = "\x1b[0m"
 RED     = "\x1b[31m"
 GREEN   = "\x1b[32m"
@@ -47,6 +49,14 @@ YELLOW  = "\x1b[33m"
 MAGENTA = "\x1b[35m"
 
 def color_code_name(name: str) -> str:
+    """Render a gRPC status code name with ANSI colors for terminal readability.
+
+    Args:
+        name: Canonical gRPC status code name (e.g., ``OK``).
+
+    Returns:
+        The status string wrapped with color codes suited to the severity.
+    """
     if name == "OK":
         return f"{GREEN}{name}{RESET}"
     if name in ("INVALID_ARGUMENT", "FAILED_PRECONDITION", "OUT_OF_RANGE"):
@@ -79,7 +89,7 @@ log = logging.getLogger("grpc_server")
 logging.getLogger("model_cache").setLevel(logging.INFO)  # show HIT/MISS if MODEL_CACHE_LOG=1
 
 
-# ---------------------- dtype maps for request/response ----------------------
+# Dtype mappings for request and response payloads
 NP_TO_PROTO = {
     np.dtype(np.float32): pb.DT_FLOAT32,
     np.dtype(np.float64): pb.DT_FLOAT64,
@@ -91,6 +101,14 @@ NP_TO_PROTO = {
 
 
 def _fmt_shape(x) -> str:
+    """Convert a shape-like value to a printable list representation.
+
+    Args:
+        x: Iterable describing tensor dimensions.
+
+    Returns:
+        String form of the dimensions; ``[]`` when the input cannot be iterated.
+    """
     try:
         return str(list(x))
     except Exception:
@@ -98,7 +116,11 @@ def _fmt_shape(x) -> str:
 
 
 async def _debug_log_deployed_names(models_collection):
-    """Best-effort: list deployed model names visible to this process."""
+    """Log the deployed model names visible to this process.
+
+    Args:
+        models_collection: Motor collection that stores model deployment metadata.
+    """
     try:
         names = []
         async for m in models_collection.find({"status": "Deployed"}):
@@ -110,14 +132,29 @@ async def _debug_log_deployed_names(models_collection):
         log.warning("Could not list deployed models: %s", e)
 
 
-# --------------------- optional: health-probe logging ------------------------
+# Optional health probe logging interceptor
 class HealthLogInterceptor(grpc.aio.ServerInterceptor):
-    """Logs incoming grpc.health.v1.Health checks when enabled via LOG_HEALTH."""
+    """Emit structured logs for gRPC health checks when logging is enabled."""
     def __init__(self, enabled: bool, logger: logging.Logger):
+        """Initialize the interceptor with optional logging behavior.
+
+        Args:
+            enabled: If False, the interceptor returns handlers unchanged.
+            logger: Destination for any emitted log entries.
+        """
         self.enabled = enabled
         self.logger = logger
 
     async def intercept_service(self, continuation: Any, handler_call_details: Any):
+        """Optionally log incoming health RPCs and forward the handler.
+
+        Args:
+            continuation: Callable that yields the RPC handler when awaited.
+            handler_call_details: Metadata describing the inbound RPC call.
+
+        Returns:
+            The original or wrapped handler depending on the logging setting.
+        """
         handler = await continuation(handler_call_details)
         if not self.enabled or handler is None:
             return handler
@@ -127,33 +164,41 @@ class HealthLogInterceptor(grpc.aio.ServerInterceptor):
         return handler
 
 
-# --------------------------- gRPC service ------------------------------------
+# gRPC service implementation
 class InferenceService(pb_grpc.InferenceServiceServicer):
-    """
-    Unary Predict contract (parity with REST):
-      - resolve model by *name*, require exactly one doc with status="Deployed"
-      - decode RequestTensor (dims + raw bytes), optional input name
-      - optional request dtype: if provided, must match model input dtype
-      - bind to model input[0]; return only output[0]
-      - orchestrator enforces dtype/shape/name and uses the shared ModelCache
-    """
+    """gRPC servicer that mirrors the REST inference contract via the orchestrator."""
 
     def __init__(self, models_collection, gridfs_bucket: AsyncIOMotorGridFSBucket):
+        """Create the servicer with shared database-backed dependencies.
+
+        Args:
+            models_collection: Motor collection containing model deployment metadata.
+            gridfs_bucket: GridFS bucket providing access to model binaries.
+        """
         self._orch = InferenceOrchestrator(models_collection=models_collection, gridfs_bucket=gridfs_bucket)
         log.info("Orchestrator initialized.")
 
     async def Predict(self, request: pb.PredictRequest, context: grpc.aio.ServicerContext) -> pb.PredictReply:
-        req_id = uuid.uuid4().hex[:8]
+        """Execute the Predict RPC using shared REST parity semantics.
+
+        Args:
+            request: PredictRequest carrying model name and tensor payload.
+            context: gRPC context used to propagate status and metadata.
+
+        Returns:
+            PredictReply containing output[0] mapped to the protobuf tensor type.
+        """
+        request_id = uuid.uuid4().hex[:8]
         model_name = (request.model_name or "").strip()
 
         started = time.perf_counter()
         status = grpc.StatusCode.OK
         reason = ""     # human-readable cause for non-OK
         req_bytes = 0
-        rep_bytes = 0
-        in_shape = "[]"
-        out_shape = "[]"
-        in_dtype_str = "?"
+        response_bytes = 0
+        input_shape = "[]"
+        output_shape = "[]"
+        input_dtype_str = "?"
 
         try:
             if not model_name:
@@ -163,9 +208,9 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
                 context.set_details("model_name must be non-empty.")
                 return pb.PredictReply()
 
-            t = request.input
-            dims = list(t.dims)
-            in_shape = _fmt_shape(dims)
+            request_tensor = request.input
+            dims = list(request_tensor.dims)
+            input_shape = _fmt_shape(dims)
             if not dims:
                 status = grpc.StatusCode.INVALID_ARGUMENT
                 reason = "missing dims"
@@ -173,32 +218,32 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
                 context.set_details("input.dims must be provided (non-empty).")
                 return pb.PredictReply()
 
-            buf = t.tensor_content
-            req_bytes = len(buf)
+            tensor_bytes = request_tensor.tensor_content
+            req_bytes = len(tensor_bytes)
 
             # Map proto enum -> NumPy (or sentinel)
-            mapped = PROTO_TO_NP.get(t.data_type, DT_UNSUPPORTED_SENTINEL)
-            if mapped is DT_UNSUPPORTED_SENTINEL:
+            mapped_dtype = PROTO_TO_NP.get(request_tensor.data_type, DT_UNSUPPORTED_SENTINEL)
+            if mapped_dtype is DT_UNSUPPORTED_SENTINEL:
                 status = grpc.StatusCode.INVALID_ARGUMENT
                 reason = "DT_STRING is not supported over raw tensor bytes."
                 context.set_code(status)
                 context.set_details(reason)
                 return pb.PredictReply()
 
-            if mapped is DT_UNSPECIFIED_SENTINEL:
-                req_np_dtype: Optional[np.dtype] = None   # derive from model
+            if mapped_dtype is DT_UNSPECIFIED_SENTINEL:
+                request_numpy_dtype: Optional[np.dtype] = None   # derive from model
             else:
-                req_np_dtype = mapped                     # explicit request dtype
-                in_dtype_str = str(req_np_dtype)
+                request_numpy_dtype = mapped_dtype                     # explicit request dtype
+                input_dtype_str = str(request_numpy_dtype)
 
             # Orchestrated inference (resolve/cache/validate/run)
             try:
-                outs = await self._orch.run_from_bytes(
+                inference_outputs = await self._orch.run_from_bytes(
                     model_name=model_name,
                     dims=dims,
-                    raw_bytes=buf,
-                    provided_name=(t.name or ""),
-                    request_dtype=req_np_dtype,
+                    raw_bytes=tensor_bytes,
+                    provided_name=(request_tensor.name or ""),
+                    request_dtype=request_numpy_dtype,
                 )
             except ModelNotFoundError as e:
                 status = grpc.StatusCode.NOT_FOUND
@@ -227,33 +272,33 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
                 return pb.PredictReply()
 
             # Success: build ResponseTensor for output[0]
-            out_arr = np.asarray(outs[0])
-            out_shape = _fmt_shape(out_arr.shape)
+            output_array = np.asarray(inference_outputs[0])
+            output_shape = _fmt_shape(output_array.shape)
 
-            if out_arr.dtype != np.bool_:
-                out_arr = out_arr.astype(out_arr.dtype.newbyteorder("<"), copy=False)
-            out_arr = np.ascontiguousarray(out_arr)
+            if output_array.dtype != np.bool_:
+                output_array = output_array.astype(output_array.dtype.newbyteorder("<"), copy=False)
+            output_array = np.ascontiguousarray(output_array)
 
-            proto_dt = (
-                    NP_TO_PROTO.get(out_arr.dtype)
-                    or NP_TO_PROTO.get(out_arr.dtype.newbyteorder("="))
-                    or NP_TO_PROTO.get(out_arr.dtype.newbyteorder("<"))
+            proto_dtype = (
+                    NP_TO_PROTO.get(output_array.dtype)
+                    or NP_TO_PROTO.get(output_array.dtype.newbyteorder("="))
+                    or NP_TO_PROTO.get(output_array.dtype.newbyteorder("<"))
             )
-            if proto_dt is None:
+            if proto_dtype is None:
                 status = grpc.StatusCode.INTERNAL
-                reason = f"unsupported output dtype: {out_arr.dtype}"
+                reason = f"unsupported output dtype: {output_array.dtype}"
                 context.set_code(status)
                 context.set_details(reason)
                 return pb.PredictReply()
 
-            reply_t = pb.ResponseTensor()
-            reply_t.name = ""
-            reply_t.dims.extend(list(out_arr.shape))
-            reply_t.tensor_content = out_arr.tobytes(order="C")
-            reply_t.data_type = proto_dt
+            response_tensor = pb.ResponseTensor()
+            response_tensor.name = ""
+            response_tensor.dims.extend(list(output_array.shape))
+            response_tensor.tensor_content = output_array.tobytes(order="C")
+            response_tensor.data_type = proto_dtype
 
-            rep_bytes = len(reply_t.tensor_content)
-            return pb.PredictReply(outputs=[reply_t])
+            response_bytes = len(response_tensor.tensor_content)
+            return pb.PredictReply(outputs=[response_tensor])
 
         finally:
             dur_ms = (time.perf_counter() - started) * 1000.0
@@ -262,19 +307,29 @@ class InferenceService(pb_grpc.InferenceServiceServicer):
             suffix = f" ({reason})" if reason else ""
             log.info(
                 "Predict %s%s model=%s in=%s -> out=%s dtype=%s dur=%.2fms bytes=req=%d rep=%d id=%s",
-                code_str, suffix, model_name or "?", in_shape, out_shape, in_dtype_str,
-                dur_ms, req_bytes, rep_bytes, req_id
+                code_str, suffix, model_name or "?", input_shape, output_shape, input_dtype_str,
+                dur_ms, req_bytes, response_bytes, request_id
             )
 
 
-# ------------------------------ server boot ----------------------------------
+# Server bootstrap logic
 def _hard_exit(code: int = 1) -> None:
+    """Terminate the process without waiting for asyncio cleanup handlers.
+
+    Args:
+        code: Exit status to propagate to the operating system.
+    """
     try:
         os._exit(code)  # type: ignore[attr-defined]
     except Exception:
         sys.exit(code)
 
 async def serve():
+    """Start the gRPC inference server and manage its lifecycle.
+
+    Returns:
+        None. The coroutine runs until interrupted and orchestrates graceful shutdown.
+    """
     mongo_uri = os.environ.get("NEXON_MONGO_URI", "mongodb://localhost:27017")
     mongo_db  = os.environ.get("NEXON_MONGO_DB",  "onnx_platform")
 
@@ -303,12 +358,18 @@ async def serve():
     )
 
     health_servicer = health.HealthServicer()
-    fq_service = pb.DESCRIPTOR.services_by_name["InferenceService"].full_name
+    fully_qualified_service = pb.DESCRIPTOR.services_by_name["InferenceService"].full_name
     health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
-    health_servicer.set(fq_service, health_pb2.HealthCheckResponse.NOT_SERVING)
+    health_servicer.set(fully_qualified_service, health_pb2.HealthCheckResponse.NOT_SERVING)
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
 
-    async def readiness_monitor(models_collection, hs: health.HealthServicer):
+    async def readiness_monitor(models_collection, health_service: health.HealthServicer):
+        """Track database reachability and publish health status updates.
+
+        Args:
+            models_collection: Motor collection for executing ping commands.
+            health_service: Health servicer that exposes readiness information.
+        """
         prev = None
         interval = int(os.environ.get("READINESS_INTERVAL", "5"))
         while True:
@@ -324,19 +385,19 @@ async def serve():
                 prev = state
 
             try:
-                hs.set("", state)
-                hs.set(fq_service, state)
+                health_service.set("", state)
+                health_service.set(fully_qualified_service, state)
             except Exception:
                 pass
 
             await asyncio.sleep(interval)
 
-    ready_task = asyncio.create_task(readiness_monitor(models_collection, health_servicer))
+    readiness_task = asyncio.create_task(readiness_monitor(models_collection, health_servicer))
 
     try:
         if os.environ.get("ENABLE_REFLECTION", "0").lower() in ("1", "true", "yes", "on"):
             from grpc_reflection.v1alpha import reflection  # type: ignore
-            service_names = [fq_service, health.SERVICE_NAME, reflection.SERVICE_NAME]
+            service_names = [fully_qualified_service, health.SERVICE_NAME, reflection.SERVICE_NAME]
             reflection.enable_server_reflection(service_names, server)
             log.info("gRPC reflection enabled for: %s", service_names[0])
     except Exception as e:
@@ -350,9 +411,14 @@ async def serve():
     shutting_down = {"value": False}
 
     def _begin_shutdown(sig: signal.Signals):
+        """Initiate the two-phase shutdown sequence in response to a signal.
+
+        Args:
+            sig: Signal that triggered the shutdown.
+        """
         if not shutting_down["value"]:
             shutting_down["value"] = True
-            log.info("Signal %s received. Beginning graceful shutdown…", sig.name)
+            log.info("Signal %s received. Beginning graceful shutdown...", sig.name)
             shutdown_event.set()
         else:
             log.warning("Second %s received. Forcing exit.", sig.name)
@@ -367,17 +433,17 @@ async def serve():
     await server.start()
     log.info("gRPC server listening on %s", addr)
 
-    dbg_task = asyncio.create_task(_debug_log_deployed_names(models_collection))
+    debug_task = asyncio.create_task(_debug_log_deployed_names(models_collection))
     await shutdown_event.wait()
 
     try:
         try:
             health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
-            health_servicer.set(fq_service, health_pb2.HealthCheckResponse.NOT_SERVING)
+            health_servicer.set(fully_qualified_service, health_pb2.HealthCheckResponse.NOT_SERVING)
         except Exception:
             pass
 
-        for task in (dbg_task, ready_task):
+        for task in (debug_task, readiness_task):
             task.cancel()
             try:
                 await task

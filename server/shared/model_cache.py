@@ -1,5 +1,5 @@
-# File: server/app/services/shared/model_cache.py
-# Async ONNX InferenceSession cache backed by MongoDB GridFS (Motor).
+"""Async ONNX Runtime session cache backed by MongoDB GridFS (Motor)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -26,17 +26,18 @@ class ModelCache:
     """
     Async in-memory cache of ONNX Runtime InferenceSessions keyed by GridFS file_id.
 
-    - Key: GridFS file_id (ObjectId). Accepts str|ObjectId; normalized to ObjectId.
-    - Storage: dict acting as LRU with 'last_used' timestamps.
-    - Concurrency: per-key asyncio.Lock prevents duplicate concurrent loads.
-    - Session creation: from bytes via onnxruntime.InferenceSession.
-    - Tunables via env:
-        * MODEL_CACHE_MAX (default 64)
-        * MODEL_CACHE_TTL (default 0; 0 = no TTL)
-        * ORT_INTRA_OP_THREADS (default 0)
-        * ORT_INTER_OP_THREADS (default 0)
-        * ORT_GRAPH_OPT_LEVEL (default 99)
-        * MODEL_CACHE_LOG (default 0; 1 enables INFO/DEBUG logs)
+    Key points:
+      - Key: GridFS file_id (ObjectId); str/bytes identifiers are normalized.
+      - Storage: dict-based LRU with timestamps for eviction and TTL checks.
+      - Concurrency: per-key asyncio.Lock prevents duplicate loads.
+      - Session creation: instantiated from GridFS bytes using onnxruntime.InferenceSession.
+      - Tunables (env):
+          MODEL_CACHE_MAX (default 64)
+          MODEL_CACHE_TTL (default 0; disabled)
+          ORT_INTRA_OP_THREADS (default 0)
+          ORT_INTER_OP_THREADS (default 0)
+          ORT_GRAPH_OPT_LEVEL (default 99)
+          MODEL_CACHE_LOG (default 0)
     """
 
     def __init__(
@@ -68,13 +69,13 @@ class ModelCache:
         # Session options (robust to missing stubs in IDEs)
         SessionOptionsCls = getattr(ort, "SessionOptions", None)
         if SessionOptionsCls is None:
-            raise RuntimeError("onnxruntime.SessionOptions not found — check your onnxruntime installation.")
+            raise RuntimeError("onnxruntime.SessionOptions not found -- check your onnxruntime installation.")
         so = SessionOptionsCls()
         so.intra_op_num_threads = int(os.environ.get("ORT_INTRA_OP_THREADS", "0"))
         so.inter_op_num_threads = int(os.environ.get("ORT_INTER_OP_THREADS", "0"))
         try:
             opt_level = int(os.environ.get("ORT_GRAPH_OPT_LEVEL", "99"))
-            # Some stubs don’t advertise this attribute; it exists at runtime.
+            # Some stubs do not advertise this attribute; it exists at runtime.
             so.graph_optimization_level = opt_level  # type: ignore[attr-defined]
         except Exception:
             pass
@@ -91,6 +92,7 @@ class ModelCache:
             raise ValueError(f"Invalid GridFS file_id '{file_id}': {e}") from e
 
     def _lock_for(self, oid: ObjectId) -> asyncio.Lock:
+        """Return the per-model lock, creating it on demand."""
         lk = self._locks.get(oid)
         if lk is None:
             lk = self._locks[oid] = asyncio.Lock()
@@ -119,9 +121,9 @@ class ModelCache:
                     self._log.info("CACHE HIT (post-lock) file_id=%s", oid)
                 return sess
 
-            # Miss → load
+            # Miss -> load
             if self._verbose:
-                self._log.info("CACHE MISS file_id=%s — loading from GridFS...", oid)
+                self._log.info("CACHE MISS file_id=%s -- loading from GridFS...", oid)
             grid_out = None
             try:
                 grid_out = await self._fs.open_download_stream(file_id=oid)
@@ -162,6 +164,7 @@ class ModelCache:
             return session
 
     async def _get_if_fresh(self, oid: ObjectId, now: float) -> OrtInferenceSession | None:
+        """Return cached session if unexpired; otherwise purge and return None."""
         tpl = self._cache.get(oid)
         if not tpl:
             return None
@@ -181,6 +184,7 @@ class ModelCache:
         return session
 
     def _evict_if_needed(self, now: float) -> None:
+        """Evict least-recently-used entries until size <= max."""
         if self._max <= 0:
             return
         while len(self._cache) > self._max:
@@ -198,14 +202,14 @@ class ModelCache:
                 self._log.info("CACHE EVICT file_id=%s", oldest_oid)
 
     def invalidate(self, file_id: Any) -> None:
-        """Remove a single entry from the cache (best-effort)."""
+        """Remove a single entry from the cache (best effort)."""
         oid = self._normalize_id(file_id)
         self._cache.pop(oid, None)
         if self._verbose:
             self._log.info("CACHE INVALIDATE file_id=%s", oid)
 
     def clear(self) -> None:
-        """Clear the entire cache (best-effort)."""
+        """Clear the entire cache (best effort)."""
         self._cache.clear()
         if self._verbose:
             self._log.info("CACHE CLEAR all")
