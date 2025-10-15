@@ -17,6 +17,50 @@ This document provides instructions for reproducing the tests on a local machine
 
 ## 1) Initial Setup
 
+### Platform Support & Windows Usage
+
+The functional test runners under `server/tests` are Bash (POSIX) scripts and require a **POSIX environment** plus the following tools:
+
+- `node`, `npm`, `newman`, `newman-reporter-htmlextra`
+- `grpcurl`
+- `jq`
+
+(Versions are captured automatically in the Environment Snapshot generated later.)
+
+### On macOS/Linux these are standard. On Windows, use one of the options below:
+
+#### Option A — WSL2 (Recommended)
+1. Install WSL2 and an Ubuntu distro (Microsoft Store).
+2. Inside Ubuntu, install tooling:
+
+   ```bash
+   sudo apt update && sudo apt install -y curl jq
+   # grpcurl (amd64 example – adjust version/arch as needed)
+   curl -L https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl_1.9.1_linux_x86_64.tar.gz \
+     | tar xz && sudo mv grpcurl /usr/local/bin/
+   # Node + Newman
+   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+   sudo apt install -y nodejs
+   npm i -g newman newman-reporter-htmlextra
+   ```
+
+3. From the repo directory mounted in WSL (e.g., `\\wsl$\Ubuntu\home\<you>\nexon`), run the Bash commands in this guide as-is.
+
+#### Option B — Windows native (Git Bash + Chocolatey)
+
+If you prefer not to use WSL2, Run the Bash scripts from Git Bash:
+
+```bash
+choco install git jq grpcurl nodejs -y
+npm i -g newman newman-reporter-htmlextra
+```
+
+
+
+---
+
+### Environment Setup
+
 1. Start the services (see root [README.md](../../README.md) → Installation — Docker recommended).
 
    ```bash
@@ -39,8 +83,6 @@ This document provides instructions for reproducing the tests on a local machine
    shasum -a 256 -c server/tests/assets/models/manifest.sha256
    ```
 
-3. Prerequisite tools (installed and on PATH): `node`, `npm`, `newman`, `newman-reporter-htmlextra`, `grpcurl`, `jq`. <br>
-   (Versions are captured automatically in the Environment Snapshot generated later.)
 
 ---
 
