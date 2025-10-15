@@ -193,6 +193,18 @@ This project includes two primary guides for validation:
 ---
 
 
+## 🧪 Testing & Reproducibility
+
+This project includes two primary guides for validation:
+
+- **[NEXON: Test Client](server/tools/README.md)** <br>
+  This guide provides a simple CLI client for smoke testing and micro-benchmarking. Use it for quick validation and running quick performance checks.
+- **[NEXON: Local Testing & Evaluation Guide](server/tests/README.md)** <br>
+  This is the primary guide for formal evaluation. It contains the **locally reproducible test suite** with scripts for generating key evidence artifacts referenced in the thesis.
+
+---
+
+
 ## Acknowledgments
 
 This work extends the original NEXON project by Hussein Megahed (UI and initial REST workflow).

@@ -1,18 +1,20 @@
-# 🧪 NEXON Test Clients & Benchmarks
+# 🧪 NEXON: Test Client
 
-High-quality, reproducible smoke tests and micro-benchmarks for the NEXON inference services (gRPC and REST) to ensure parity and benchmark performance.
+Reproducible smoke tests and micro-benchmarks for the NEXON inference services (gRPC and REST) to ensure parity and benchmark performance.
 
 Run all commands from the `./server` directory.
 
+This guide **only** covers quick smoke tests and micro-benchmarks. <br>
+For the complete end-to-end and acceptance testing suite, see the instructions in [tests/README.md](../tests/README.md)
+
 ---
 
-## **1) Reference model (already in the repo)**
+## 1) Use the included Reference Model
 
-This repository includes a tiny reference model you can use immediately:
+This repository includes a tiny (103-byte) reference model for immediate use: <br>
 
-```text
-server/tools/models/sigmoid.onnx
-```
+[`server/tools/presets/sigmoid.onnx`](presets/sigmoid.onnx)
+
 
 ---
 
@@ -24,7 +26,7 @@ Deploy the reference model in a single request:
 
 ```bash
 curl -f -X POST http://127.0.0.1:8080/deployment/deploy-file/ \
-  -F "file=@tools/models/sigmoid.onnx"
+  -F "file=@tools/presets/sigmoid.onnx"
 ```
 
 ### Optional Fallback (two steps: upload → deploy)
@@ -32,7 +34,7 @@ curl -f -X POST http://127.0.0.1:8080/deployment/deploy-file/ \
 ```bash
 # 1) Upload (status = Uploaded)
 curl -f -X POST http://127.0.0.1:8080/upload/ \
-  -F "file=@tools/models/sigmoid.onnx"
+  -F "file=@tools/presets/sigmoid.onnx"
 
 # Copy the "model_id" value from the upload response, then:
 
@@ -82,7 +84,7 @@ python -m tools.client_test --model-name sigmoid.onnx --preset sigmoid --rest-on
 
 You can supply any input (shape/dtype must match the model’s first input).
 
-Edit this YAML file: [`server/tools/models/sigmoid_input.yaml`](./models/sigmoid_input.yaml)
+Edit this YAML file: [`server/tools/presets/sigmoid_input.yaml`](./presets/sigmoid_input.yaml)
 
 
 Then run:
@@ -90,7 +92,7 @@ Then run:
 ```bash
 python -m tools.client_test \
   --model-name sigmoid.onnx \
-  --input tools/models/sigmoid_input.yaml
+  --input tools/presets/sigmoid_input.yaml
 ```
 
 The YAML file contains comments and a dtype field. No `--dtype` flag is needed when using `--input`.

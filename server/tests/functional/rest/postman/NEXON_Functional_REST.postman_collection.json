@@ -1,0 +1,148 @@
+{
+  "info": {
+    "name": "NEXON Functional (REST)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "FT-01 REST valid inference (small)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", () => pm.response.code === 200);",
+              "const j = pm.response.json();",
+              "pm.test(\"has results[]\", () => j && Array.isArray(j.results));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/inference/infer/{{model_small}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"input\": [[ [0.90611831,0.55083885,0.60356778,0.4017955,0.93486481], [0.4901685,0.13770382,0.18119458,0.96234953,0.73380571], [0.45169349,0.43948672,0.42517826,0.66069703,0.03820433], [0.03415621,0.20126882,0.12834833,0.40389847,0.91753817] ], [ [0.35571745,0.00176035,0.50712222,0.8112738,0.87369624], [0.72933191,0.90544295,0.42246992,0.40272341,0.32540792], [0.81075661,0.63102424,0.2854389,0.70343316,0.40121651], [0.91779477,0.42282643,0.28781966,0.72246921,0.2001259] ], [ [0.48461046,0.17440038,0.65646471,0.45603641,0.35819514], [0.41587646,0.16148726,0.66821656,0.6465515,0.72218574], [0.98868071,0.5001877,0.98337036,0.06299395,0.53611984], [0.33656247,0.69934775,0.59331723,0.7628454,0.1131932] ] ] }",
+          "options": { "raw": { "language": "json" } }
+        }
+      }
+    },
+    {
+      "name": "FT-03 REST invalid input (shape/type)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"400/422 on invalid\", () => [400,422].includes(pm.response.code));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/inference/infer/{{model_small}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"input\": [1,2,3] }",
+          "options": { "raw": { "language": "json" } }
+        }
+      }
+    },
+    {
+      "name": "FT-05 REST non-deployed model",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"400/409 undeployed\", () => [400,409].includes(pm.response.code));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/inference/infer/{{model_medium}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"input\": [[50022.0]] }",
+          "options": { "raw": { "language": "json" } }
+        }
+      }
+    },
+    {
+      "name": "FT-07 REST non-existing model",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"404 Not Found\", () => pm.response.code === 404);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/inference/infer/DOES_NOT_EXIST",
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"input\": [[1.0]] }",
+          "options": { "raw": { "language": "json" } }
+        }
+      }
+    },
+    {
+      "name": "FT-09 REST health (/healthz)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", () => pm.response.code === 200);",
+              "const j = pm.response.json();",
+              "pm.test(\"status ok\", () => j && j.status === \"ok\");"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{base_url}}/healthz" }
+    },
+    {
+      "name": "FT-11 REST readiness (/readyz)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", () => pm.response.code === 200);",
+              "const j = pm.response.json();",
+              "pm.test(\"status ready\", () => j && j.status === \"ready\");"
+            ]
+          }
+        }
+      ],
+      "request": { "method": "GET", "url": "{{base_url}}/readyz" }
+    }
+  ]
+}
