@@ -32,11 +32,11 @@ cd nexon
 
 ### **2. Prepare Environment**
 
-Create `.env` at the repo root (from `.env.example`, or let make create one with sane defaults):
+Create `.env` at the repo root (copy from `.env.example`):
 
 ```bash
-# preferred (creates .env if missing, sets up local venv too)
-make init-env
+# PowerShell / bash / zsh (recommended)
+docker run --rm -v "${PWD}:/w" alpine:3 sh -lc 'cp /w/.env.example /w/.env'
 ```
 
 

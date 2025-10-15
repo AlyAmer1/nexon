@@ -13,8 +13,12 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 COPY server/grpc_service/protos/ grpc_service/protos/
 COPY server/grpc_service/gen_protos_and_build_stubs.sh grpc_service/gen_protos_and_build_stubs.sh
 
-# Build wheel -> /app/server/stubs/dist/*.whl
-RUN bash grpc_service/gen_protos_and_build_stubs.sh
+# Ensure bash exists, normalize CRLF -> LF, make executable, Build wheel -> /app/server/stubs/dist/*.whl
+RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && sed -i 's/\r$//' grpc_service/gen_protos_and_build_stubs.sh \
+    && chmod +x grpc_service/gen_protos_and_build_stubs.sh \
+    && bash grpc_service/gen_protos_and_build_stubs.sh
 
 
 # Stage 2: REST runtime image
@@ -38,18 +42,7 @@ COPY server/ /app/server
 
 # Build-time import smoke test (no runtime side effects, no proto-field assertions).
 # Purpose: fail the image build early if Python package wiring or import paths are broken.
-RUN python - <<'PY'
-import importlib
-for m in [
-    "rest.main",
-    "shared.database",
-    "rest.app.services.inference",
-    "rest.app.services.deployment",
-    "rest.app.services.upload",
-]:
-    importlib.import_module(m)
-print("REST imports OK")
-PY
+RUN python -c "import importlib; [importlib.import_module(m) for m in ['rest.main','shared.database','rest.app.services.inference','rest.app.services.deployment','rest.app.services.upload']]; print('REST imports OK')"
 
 # Non-root user
 RUN useradd -m appuser

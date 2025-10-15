@@ -1,2 +1,6 @@
 # Treat ONNX artifacts as binary (no text diffs/merges/EOL normalization)
 *.onnx binary
+*.sh         text eol=lf
+*.proto      text eol=lf
+**/Dockerfile text eol=lf
+*.py         text eol=lf

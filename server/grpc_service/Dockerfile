@@ -12,8 +12,12 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 COPY server/grpc_service/protos/ grpc_service/protos/
 COPY server/grpc_service/gen_protos_and_build_stubs.sh grpc_service/gen_protos_and_build_stubs.sh
 
-# Generate *_pb2*.py + *.pyi and build the wheel into /app/server/stubs/dist
-RUN bash grpc_service/gen_protos_and_build_stubs.sh
+# Ensure bash exists, normalize CRLF -> LF, make executable, Generate *_pb2*.py + *.pyi and build the wheel into /app/server/stubs/dist
+RUN apt-get update && apt-get install -y --no-install-recommends bash ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && sed -i 's/\r$//' grpc_service/gen_protos_and_build_stubs.sh \
+    && chmod +x grpc_service/gen_protos_and_build_stubs.sh \
+    && bash grpc_service/gen_protos_and_build_stubs.sh
 
 # Stage 2: runtime
 FROM python:3.11-slim AS runtime
@@ -35,10 +39,7 @@ RUN pip install --no-cache-dir /tmp/stubs/dist/*.whl
 COPY server/ /app/server
 
 # Optional import check (will import the app and still use the wheel stubs)
-RUN python - <<'PY'
-import grpc_service.server as s  # noqa
-print("gRPC server import OK")
-PY
+RUN python -c "import grpc_service.server as s; print('gRPC server import OK')"
 
 # Non-root user
 RUN useradd -m appuser
