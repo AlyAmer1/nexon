@@ -67,9 +67,3 @@ server/stubs/
 server/tests/assets/models/*
 # Keep only metadata/scripts
 !server/tests/assets/models/manifest.sha256
-
-# Ignore all detailed test results logs
-server/tests/results/
-
-# Ignore sensitive Postman environment files
-*.postman_environment.json

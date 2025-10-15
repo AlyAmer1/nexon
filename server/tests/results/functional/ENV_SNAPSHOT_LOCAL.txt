@@ -1,0 +1,23 @@
+# Environment Snapshot — LOCAL
+DATE_UTC: Sat Oct 11 21:59:02 UTC 2025
+OS:       Darwin MacBook-Pro-5.local 24.6.0 Darwin Kernel Version 24.6.0: Mon Jul 14 11:30:29 PDT 2025; root:xnu-11417.140.69~1/RELEASE_ARM64_T6000 arm64
+
+repo_root: /Users/aliamer/IdeaProjects/nexon
+
+# Toolchain versions
+node:     v24.1.0
+npm:      11.3.0
+newman:   6.2.1
+grpcurl:  1.9.3
+jq:       jq-1.8.1
+python:   Python 3.11.13
+docker:   Docker version 27.3.1, build ce12230
+compose:  Docker Compose version v2.29.7-desktop.1
+
+# Test endpoints used
+REST_BASE: http://127.0.0.1:8080
+gRPC_EP:   127.0.0.1:8080
+
+# Artifact locations
+REST results dir: server/tests/results/functional/rest
+gRPC results dir: server/tests/results/functional/grpc

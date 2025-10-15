@@ -1,0 +1,27 @@
+# Functional Acceptance — LOCAL
+Sat Oct 11 21:15:29 UTC 2025
+
+## gRPC outcomes (server/tests/results/functional/grpc)
+  iters_detected: FT-02(valid)=5, FT-04(invalid)=5, FT-06(undeployed)=5, FT-08(not_found)=5, FT-10(health)=5, FT-12(readiness)=5
+FT-02 Predict (valid): PASS
+FT-04 INVALID_ARGUMENT: PASS
+FT-06 FAILED_PRECONDITION: PASS
+FT-08 NOT_FOUND: PASS
+FT-10 health status: SERVING
+FT-12 readiness status: SERVING
+
+## REST outcomes (server/tests/results/functional/rest)
+REST JSON: POSTMAN_REST_20251011_200848.json
+REST collection: PASS
+  iterations=5
+  requests=30
+  assertions_total=45
+  assertions_failed=0
+  failures_len=0
+  per-case:
+    FT-01 REST valid inference (small): PASS
+    FT-03 REST invalid input (shape/type): PASS
+    FT-05 REST non-deployed model: PASS
+    FT-07 REST non-existing model: PASS
+    FT-09 REST health (/healthz): PASS
+    FT-11 REST readiness (/readyz): PASS
