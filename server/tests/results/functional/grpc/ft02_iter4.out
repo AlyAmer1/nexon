@@ -1,0 +1,13 @@
+{
+  "outputs": [
+    {
+      "dims": [
+        "3",
+        "4",
+        "5"
+      ],
+      "tensor_content": "FFM2P3ZjIj8yfyU/3F8ZP9zSNz/lwR4/lcwIP5mQCz9TPTk/vPYsPzxtHD/Zrhs/Cs8aP4zPKD/dcQI/kC8CP4DWDD/6Mwg/9IAZPxvsNj9jhxY/1xwAPxfHHz/gPzE/lJw0P262LD8BSjY/mqQaP3duGT/upBQ/pzgxP8QYJz8iJRI/NkArP79WGT+K7zY/MKoaP1pLEj+YUyw/9sMMPwlsHj8oIgs/NpEoP9mwHD+3rhY/Lz0aPxJQCj8YPik/4f4nP4FPLD9slDo/YlwfP45POj/ABwQ/RoMhP8VWFT/gBCs/cOUkP6qVLj+UPAc/",
+      "data_type": "DT_FLOAT32"
+    }
+  ]
+}

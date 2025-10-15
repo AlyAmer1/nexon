@@ -1,0 +1,3 @@
+ERROR:
+  Code: FailedPrecondition
+  Message: Model 'medium_sized_model.onnx' has no deployed version.
