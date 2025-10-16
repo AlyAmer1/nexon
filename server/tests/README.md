@@ -25,36 +25,44 @@ The functional test runners under `server/tests` are Bash (POSIX) scripts and re
 - `grpcurl`
 - `jq`
 
-(Versions are captured automatically in the Environment Snapshot generated later.)
 
-### On macOS/Linux these are standard. On Windows, use one of the options below:
+> Versions are captured automatically in the Environment Snapshot generated later
 
-#### Option A — WSL2 (Recommended)
-1. Install WSL2 and an Ubuntu distro (Microsoft Store).
-2. Inside Ubuntu, install tooling:
-
+### macOS (Homebrew)
    ```bash
-   sudo apt update && sudo apt install -y curl jq
-   # grpcurl (amd64 example – adjust version/arch as needed)
-   curl -L https://github.com/fullstorydev/grpcurl/releases/download/v1.9.1/grpcurl_1.9.1_linux_x86_64.tar.gz \
-     | tar xz && sudo mv grpcurl /usr/local/bin/
-   # Node + Newman
-   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-   sudo apt install -y nodejs
+   brew install jq node grpcurl
    npm i -g newman newman-reporter-htmlextra
    ```
+### Linux (Ubuntu/Debian)
 
-3. From the repo directory mounted in WSL (e.g., `\\wsl$\Ubuntu\home\<you>\nexon`), run the Bash commands in this guide as-is.
+   ```bash
+# Base utilities
+sudo apt update && sudo apt install -y curl jq ca-certificates
 
-#### Option B — Windows native (Git Bash + Chocolatey)
-
-If you prefer not to use WSL2, Run the Bash scripts from Git Bash:
-
-```bash
-choco install git jq grpcurl nodejs -y
+# Node.js 20 (via NodeSource) + Newman + HTML report plugin
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 npm i -g newman newman-reporter-htmlextra
-```
 
+# grpcurl (arch-aware download: x86_64 or arm64)
+v=1.9.1
+a="$(uname -m)"
+case "$a" in
+  x86_64|amd64) p=linux_x86_64 ;;
+  aarch64|arm64) p=linux_arm64 ;;
+  *) echo "Unsupported arch: $a — see https://github.com/fullstorydev/grpcurl/releases"; exit 1 ;;
+esac
+curl -fsSL "https://github.com/fullstorydev/grpcurl/releases/download/v${v}/grpcurl_${v}_${p}.tar.gz" \
+  | tar xz
+sudo install -m 0755 grpcurl /usr/local/bin/grpcurl
+   ```
+
+### Windows (Recommended: WSL2)
+
+1. Install Docker Desktop and WSL2 with an Ubuntu distro.
+2. Open the Ubuntu (WSL) terminal and run the exact commands from the
+   [Linux (Ubuntu/Debian) setup](#linux-ubuntudebian) section inside WSL.
+3. Use your repo path under WSL (e.g., \\wsl$\Ubuntu\home\<you>\nexon) for all Bash commands in this guide.
 
 
 ---

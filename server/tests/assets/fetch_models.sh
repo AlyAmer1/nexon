@@ -4,14 +4,14 @@ set -euo pipefail
 # Config (override via env if needed)
 OWNER="${OWNER:-AlyAmer1}"
 REPO="${REPO:-nexon}"
-TAG="${TAG:-presets-v1.0}"
+TAG="${TAG:-models-v1.0}"  # align with README
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-DEST_DIR="${DEST_DIR:-$REPO_ROOT/server/tests/assets/presets}"
+DEST_DIR="${DEST_DIR:-$REPO_ROOT/server/tests/assets/models}"  # align with README
 BASE_URL="${BASE_URL:-https://github.com/$OWNER/$REPO/releases/download/$TAG}"
 
 ASSETS=("sigmoid.onnx" "medium_sized_model.onnx" "gpt2_dynamic.onnx")
-MANIFEST="$REPO_ROOT/server/tests/assets/models/manifest.sha256"
+MANIFEST="${MANIFEST:-$DEST_DIR/manifest.sha256}"
 
 mkdir -p "$DEST_DIR"
 
@@ -56,7 +56,7 @@ for file in "${ASSETS[@]}"; do
       echo "• No manifest entry for $file (skipping verify)"
     fi
   else
-    echo "• No manifest file found (skipping verify)"
+    echo "• No manifest file found at $MANIFEST (skipping verify)"
   fi
 done
 
