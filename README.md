@@ -22,6 +22,29 @@
 
 ---
 
+## 🔧 Prerequisites
+
+**This project requires a running Docker environment.** <br> 
+Please follow the official guide for your operating system below:
+
+### macOS
+For macOS, install Docker Desktop.
+- **Official Guide**: [Docker Desktop for Mac](https://docs.docker.com/desktop/install/mac-install/)
+
+### Linux
+For Linux, install Docker Desktop or the Docker Engine suitable for your distribution.
+- **Official Guide**: [Docker Desktop for Linux](https://docs.docker.com/desktop/install/linux-install/)
+- **Official Guide**: [Docker Engine (by distribution)](https://docs.docker.com/engine/install/)
+
+### Windows
+A complete setup on Windows requires installing WSL, then Docker Desktop with the WSL 2 backend enabled.
+
+1.  **Install WSL (Ubuntu)**: [Official Guide: Install WSL](https://learn.microsoft.com/windows/wsl/install)
+2.  **Install Docker Desktop**: [Official Guide: Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/)
+3.  **Enable WSL 2 Backend**: [Official Guide: Enable WSL 2 Backend](https://docs.docker.com/desktop/wsl/)
+
+---
+
 ## 📦 Installation (Docker – recommended)
 
 ### **1. Clone the Repository**
@@ -77,9 +100,7 @@ Note: gRPC stubs are generated during the Docker build into `/app/server/stubs/`
 
 > **Platform note**
 > - **macOS/Linux:** run `make dev-bootstrap`.
-> - **Windows:** use **WSL2 (Ubuntu)** and run the same `make` commands.  
-
-`make` is a convenience for Unix-like environments; **Docker remains the primary, OS-agnostic path**.
+> - **Windows:** use **WSL2 (Ubuntu)** and run the same `make` commands.
 
 ### 1) One-time dev setup
 
@@ -157,6 +178,17 @@ nexon/
 │  └─ tools/                 # CLI test clients & micro-benchmarks
 └─ docker-compose.yml        # mongo + rest + grpc + envoy
 ```
+---
+
+
+## 🧪 Testing & Reproducibility
+
+This project includes two primary guides for validation:
+
+- **[NEXON: Test Client](server/tools/README.md)** <br>
+  This guide provides a simple CLI client for smoke testing and micro-benchmarking. Use it for quick validation and running quick performance checks.
+- **[NEXON: Local Testing & Evaluation Guide](server/tests/README.md)** <br>
+  This is the primary guide for formal evaluation. It contains the **locally reproducible test suite** with scripts for generating key evidence artifacts referenced in the thesis.
 
 ---
 
