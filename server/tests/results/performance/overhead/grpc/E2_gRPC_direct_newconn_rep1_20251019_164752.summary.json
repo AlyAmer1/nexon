@@ -1,0 +1,76 @@
+{
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "gRPC OK": {
+                    "name": "gRPC OK",
+                    "path": "::gRPC OK",
+                    "id": "1f1fbbf5b0d190b3afff107d135772f5",
+                    "passes": 2463,
+                    "fails": 0
+                }
+            }
+    },
+    "metrics": {
+        "rpc_duration_ms": {
+            "p(90)": 12,
+            "p(95)": 13,
+            "p(99)": 17,
+            "max": 30,
+            "min": 2,
+            "avg": 8.213154689403167,
+            "med": 8
+        },
+        "data_sent": {
+            "count": 820902,
+            "rate": 3908.451574814811
+        },
+        "iteration_duration": {
+            "max": 157.08525,
+            "min": 52.94175,
+            "avg": 60.82357025578565,
+            "med": 60.862958,
+            "p(90)": 64.70609180000001,
+            "p(95)": 66.5430458,
+            "p(99)": 71.40290499999999
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 1
+        },
+        "data_received": {
+            "count": 823840,
+            "rate": 3922.439883683355
+        },
+        "vus_max": {
+            "max": 1,
+            "value": 1,
+            "min": 1
+        },
+        "grpc_req_duration": {
+            "p(90)": 10.864567000000001,
+            "p(95)": 12.220103799999999,
+            "p(99)": 15.814226919999998,
+            "max": 26.9775,
+            "min": 1.709125,
+            "avg": 7.660338994721893,
+            "med": 7.94075
+        },
+        "iterations": {
+            "count": 2463,
+            "rate": 11.726754507564703
+        },
+        "checks": {
+            "passes": 2463,
+            "fails": 0,
+            "thresholds": {
+                "rate>=0.99": false
+            },
+            "value": 1
+        }
+    }
+}

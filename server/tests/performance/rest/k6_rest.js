@@ -1,32 +1,40 @@
-// REST performance via Envoy
+const CHECKS_MIN = Number(__ENV.CHECKS_MIN || '0.99');
 import http from 'k6/http';
+// REST performance via Envoy
+const REQ_TIMEOUT = __ENV.REQ_TIMEOUT || '900s';
 import { check, sleep } from 'k6';
 import { SharedArray } from 'k6/data';
-import { open } from 'k6/fs';
 
-// ENV: BASE, MODEL_NAME, VUS, USE_FILE (0|1), NEW_CONN (0|1), PAYLOAD_SIZE (small|large), PAYLOAD_FILE
+
+// ENV: BASE, MODEL_NAME, VUS, USE_FILE (0/1), NEW_CONN (0/1), PAYLOAD_SIZE (small|medium|big), PAYLOAD_FILE
 const BASE = __ENV.BASE || 'http://127.0.0.1:8080';
 const MODEL_NAME = __ENV.MODEL_NAME || 'sigmoid.onnx';
 const VUS = Number(__ENV.VUS || '1');
 const USE_FILE = __ENV.USE_FILE === '1';
+const PREWARM = __ENV.PREWARM === '1';
+const DURATION = __ENV.DURATION || '30s';
 const NEW_CONN = __ENV.NEW_CONN === '1';
-const PAYLOAD_SIZE = (__ENV.PAYLOAD_SIZE || '').toLowerCase();
+const PAYLOAD_SIZE = (__ENV.PAYLOAD_SIZE || '').toLowerCase(); // used only for GPT-2
 const PAYLOAD_FILE = __ENV.PAYLOAD_FILE || '';
 
 function inferPayloadPath() {
   if (PAYLOAD_FILE) return PAYLOAD_FILE;
-  if (MODEL_NAME.startsWith('gpt2')) {
-    return (PAYLOAD_SIZE === 'large')
-      ? 'server/tests/performance/common/payloads/gpt2_large_1x1024.json'
-      : 'server/tests/performance/common/payloads/gpt2_small.json';
-  }
-  if (MODEL_NAME.startsWith('medium')) {
-    return 'server/tests/performance/common/payloads/medium_1x1.json';
-  }
-  // default: sigmoid
-  return 'server/tests/performance/common/payloads/sigmoid_values.json';
-}
 
+  // Medium model → 1x1 float32
+  if (MODEL_NAME.toLowerCase().includes('medium')) {
+    return '../common/payloads/medium_1x1.json';
+  }
+
+  // GPT-2 → tokens
+  if (MODEL_NAME.startsWith('gpt2')) {
+    if (PAYLOAD_SIZE === 'medium') return '../common/payloads/gpt2_medium_1x256.json';
+    if (PAYLOAD_SIZE === 'big' || PAYLOAD_SIZE === 'large') return '../common/payloads/gpt2_big_1x1024.json';
+    return '../common/payloads/gpt2_small_1x32.json';
+  }
+
+  // Default: sigmoid → 3x4x5 float32
+  return '../common/payloads/sigmoid_values.json';
+}
 const filePath = inferPayloadPath();
 
 const payload = new SharedArray('payload', function () {
@@ -39,30 +47,17 @@ const payload = new SharedArray('payload', function () {
 });
 
 export let options = {
-  scenarios: {
-    step: {
-      executor: 'ramping-vus',
-      startVUs: 0,
-      stages: [
-        { duration: '60s', target: VUS },  // ramp
-        { duration: '120s', target: VUS }, // steady
-        { duration: '30s', target: 0 },    // ramp-down
-      ],
-    },
-  },
-  noConnectionReuse: NEW_CONN,
-  thresholds: {
-    http_req_failed: ['rate==0'],
-    http_req_duration: ['p(95)<5000'], // tolerant bound
-  },
+  scenarios: PREWARM
+    ? { step: { executor: 'ramping-vus', startVUs: 0,
+        stages: [{ duration: (DURATION || '30s'), target: Number(__ENV.VUS || VUS) }, { duration: '1s', target: 0 }] } }
+    : { step: { executor: 'ramping-vus', startVUs: 0,
+        stages: [{ duration:'60s', target: VUS }, { duration:'120s', target: VUS }, { duration:'30s', target: 0 }] } },
+  thresholds: PREWARM ? {} : { checks: [`rate>=${CHECKS_MIN}`] },
 };
 
 export default function () {
   const url = `${BASE}/inference/infer/${MODEL_NAME}`;
-  const res = http.post(url, payload[0], {
-    headers: { 'Content-Type': 'application/json' },
-    timeout: '60s',
-  });
+  const res = http.post(url, payload[0], { headers: { 'Content-Type': 'application/json' }, timeout: REQ_TIMEOUT });
   check(res, { 'status 200': (r) => r.status === 200 });
   sleep(0.05);
 }

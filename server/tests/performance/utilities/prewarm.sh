@@ -3,6 +3,9 @@ set -euo pipefail
 
 VM="${1:?server VM IP required}"     # e.g., 10.0.1.67
 MODEL="${2:-sigmoid.onnx}"
+# Short prewarm defaults
+PRE_VUS=${PRE_VUS:-5}
+PRE_DUR=${PRE_DUR:-30s}
 
 echo "Pre-flight: http://${VM}:8080/healthz and /readyz"
 curl -fsS "http://${VM}:8080/healthz" >/dev/null
@@ -15,21 +18,21 @@ if [[ "$MODEL" == "sigmoid.onnx" ]]; then
       "http://${VM}:8080/inference/infer/${MODEL}" >/dev/null
 fi
 
-echo "Warm-up (REST, 10 VUs, 60s)…"
-k6 run server/tests/performance/rest/k6_rest.js \
+echo "Warm-up (REST, ${PRE_VUS} VUs, ${PRE_DUR})…"
+PREWARM=1 VUS="${PRE_VUS}" DURATION="${PRE_DUR}" k6 run server/tests/performance/rest/k6_rest.js \
   -e BASE="http://${VM}:8080" -e MODEL_NAME="${MODEL}" \
-  -e VUS=10 -e USE_FILE=1 --summary-export=/dev/null >/dev/null
+ -e USE_FILE=1 --summary-export=/dev/null >/dev/null
 
-echo "Warm-up (gRPC, 10 VUs, 60s)…"
+echo "Warm-up (gRPC, ${PRE_VUS} VUs, ${PRE_DUR})…"
 if [[ "$MODEL" == "sigmoid.onnx" ]]; then
-  k6 run server/tests/performance/grpc/k6_grpc.js \
+  PREWARM=1 VUS="${PRE_VUS}" DURATION="${PRE_DUR}" k6 run server/tests/performance/grpc/k6_grpc.js \
     -e HOST="${VM}:8080" -e MODEL_NAME="${MODEL}" \
     -e DIMS='[3,4,5]' -e DTYPE=float32 \
-    -e VUS=10 -e USE_FILE=1 --summary-export=/dev/null >/dev/null
+ -e USE_FILE=1 --summary-export=/dev/null >/dev/null
 else
   # GPT-2 and medium infer dims/dtype internally unless overridden
-  k6 run server/tests/performance/grpc/k6_grpc.js \
+  PREWARM=1 VUS="${PRE_VUS}" DURATION="${PRE_DUR}" k6 run server/tests/performance/grpc/k6_grpc.js \
     -e HOST="${VM}:8080" -e MODEL_NAME="${MODEL}" \
-    -e VUS=10 -e USE_FILE=1 --summary-export=/dev/null >/dev/null
+ -e USE_FILE=1 --summary-export=/dev/null >/dev/null
 fi
 echo "Pre-warm complete."

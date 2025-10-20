@@ -1,0 +1,13 @@
+bucket,proto,file,model,vu,rep,arm,run_ts,p50_ms,p95_ms,p99_ms,avg_ms,min_ms,max_ms,iterations,iter_rate
+overhead,rest,E2_REST_direct_newconn_rep1_20251019_164752.summary.json,E2_REST_direct_newconn_rep1_20251019_164752.summary.json,1,1,direct_newconn,20251019_164752,0.000,12.623,20.508,8.120,1.936,73.082,2416,11.5039276
+overhead,rest,E2_REST_direct_newconn_rep2_20251019_164752.summary.json,E2_REST_direct_newconn_rep2_20251019_164752.summary.json,1,2,direct_newconn,20251019_164752,0.000,14.011,18.627,7.692,1.884,45.832,2422,11.5317847
+overhead,rest,E2_REST_direct_newconn_rep3_20251019_164752.summary.json,E2_REST_direct_newconn_rep3_20251019_164752.summary.json,1,3,direct_newconn,20251019_164752,0.000,11.848,16.346,6.726,1.823,33.452,2497,11.8891895
+overhead,rest,E2_REST_direct_reuse_rep1_20251019_164752.summary.json,E2_REST_direct_reuse_rep1_20251019_164752.summary.json,1,1,direct_reuse,20251019_164752,0.000,12.465,19.185,7.613,1.680,251.269,2479,11.8031823
+overhead,rest,E2_REST_direct_reuse_rep2_20251019_164752.summary.json,E2_REST_direct_reuse_rep2_20251019_164752.summary.json,1,2,direct_reuse,20251019_164752,0.000,16.594,22.946,8.720,1.845,33.365,2434,11.5893444
+overhead,rest,E2_REST_direct_reuse_rep3_20251019_164752.summary.json,E2_REST_direct_reuse_rep3_20251019_164752.summary.json,1,3,direct_reuse,20251019_164752,0.000,13.383,18.459,7.791,1.912,91.333,2491,11.8600699
+overhead,rest,E2_REST_envoy_newconn_rep1_20251019_164752.summary.json,E2_REST_envoy_newconn_rep1_20251019_164752.summary.json,1,1,envoy_newconn,20251019_164752,0.000,13.793,19.038,8.382,2.326,34.411,2386,11.3586452
+overhead,rest,E2_REST_envoy_newconn_rep2_20251019_164752.summary.json,E2_REST_envoy_newconn_rep2_20251019_164752.summary.json,1,2,envoy_newconn,20251019_164752,0.000,12.807,16.740,7.513,2.438,46.966,2457,11.699688
+overhead,rest,E2_REST_envoy_newconn_rep3_20251019_164752.summary.json,E2_REST_envoy_newconn_rep3_20251019_164752.summary.json,1,3,envoy_newconn,20251019_164752,0.000,15.431,20.490,9.526,2.361,156.167,2377,11.3233699
+overhead,rest,E2_REST_envoy_reuse_rep1_20251019_164752.summary.json,E2_REST_envoy_reuse_rep1_20251019_164752.summary.json,1,1,envoy_reuse,20251019_164752,0.000,14.846,20.856,8.120,2.263,32.603,2471,11.7670289
+overhead,rest,E2_REST_envoy_reuse_rep2_20251019_164752.summary.json,E2_REST_envoy_reuse_rep2_20251019_164752.summary.json,1,2,envoy_reuse,20251019_164752,0.000,12.368,16.621,7.534,2.213,88.183,2507,11.9367068
+overhead,rest,E2_REST_envoy_reuse_rep3_20251019_164752.summary.json,E2_REST_envoy_reuse_rep3_20251019_164752.summary.json,1,3,envoy_reuse,20251019_164752,0.000,15.118,22.037,8.334,2.394,87.931,2455,11.6875798

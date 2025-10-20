@@ -1,0 +1,9 @@
+=== LOCAL SNAPSHOT (UTC 20251019_235251) ===
+Darwin MacBook-Pro-5.local 24.6.0 Darwin Kernel Version 24.6.0: Mon Jul 14 11:30:29 PDT 2025; root:xnu-11417.140.69~1/RELEASE_ARM64_T6000 arm64
+ProductName:		macOS
+ProductVersion:		15.6.1
+BuildVersion:		24G90
+k6:      k6 v1.3.0 (commit/devel, go1.25.1, darwin/arm64)
+jq:      jq-1.8.1
+Docker version 27.3.1, build ce12230
+Docker Compose version v2.29.7-desktop.1

@@ -1,0 +1,79 @@
+{
+    "root_group": {
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "gRPC OK": {
+                    "name": "gRPC OK",
+                    "path": "::gRPC OK",
+                    "id": "1f1fbbf5b0d190b3afff107d135772f5",
+                    "passes": 2513,
+                    "fails": 0
+                }
+            },
+        "name": "",
+        "path": ""
+    },
+    "metrics": {
+        "vus_max": {
+            "value": 1,
+            "min": 1,
+            "max": 1
+        },
+        "rpc_duration_ms": {
+            "max": 36,
+            "min": 2,
+            "avg": 7.870274572224433,
+            "med": 8,
+            "p(50)": 8,
+            "p(90)": 11,
+            "p(95)": 12,
+            "p(99)": 15
+        },
+        "grpc_req_duration": {
+            "p(99)": 14.22160896,
+            "max": 35.33525,
+            "min": 2.128042,
+            "avg": 7.429229542379636,
+            "med": 7.668667,
+            "p(50)": 7.668667,
+            "p(90)": 9.9480752,
+            "p(95)": 10.9801336
+        },
+        "data_sent": {
+            "count": 840860,
+            "rate": 4002.9190279926606
+        },
+        "vus": {
+            "max": 1,
+            "value": 1,
+            "min": 0
+        },
+        "data_received": {
+            "count": 782964,
+            "rate": 3727.3047758642883
+        },
+        "iteration_duration": {
+            "p(95)": 63.8977664,
+            "p(99)": 68.24190496,
+            "max": 94.107084,
+            "min": 53.380375,
+            "avg": 59.62747448627152,
+            "med": 59.709,
+            "p(50)": 59.709,
+            "p(90)": 62.7468252
+        },
+        "iterations": {
+            "count": 2513,
+            "rate": 11.963151437035364
+        },
+        "checks": {
+            "passes": 2513,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.99": false
+            },
+            "value": 1
+        }
+    }
+}

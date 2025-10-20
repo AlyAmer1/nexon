@@ -24,7 +24,7 @@
 
 ## 🔧 Prerequisites
 
-**This project requires a running Docker environment.** <br> 
+**This project requires a running Docker environment.** <br>
 Please follow the official guide for your operating system below:
 
 ### macOS
@@ -145,10 +145,10 @@ npm start
 ```
 
 > 🛠️ **Developer note (IDE imports)**
-> 
+>
 >The gRPC stubs (`inference_pb2*`) are generated inside the images. Your local IDE may still show unresolved imports if it isn’t using the container’s interpreter.
 >- **Quick fix**: after `make dev-bootstrap`, point your IDE at `.venv/bin/python`
-> (On native Windows: `.venv\Scripts\python.exe`)
+   > (On native Windows: `.venv\Scripts\python.exe`)
 > <details>
 > <summary><strong>IDE setup tips (optional)</strong></summary>
 >
@@ -178,18 +178,6 @@ nexon/
 │  └─ tools/                 # CLI test clients & micro-benchmarks
 └─ docker-compose.yml        # mongo + rest + grpc + envoy
 ```
----
-
-
-## 🧪 Testing & Reproducibility
-
-This project includes two primary guides for validation:
-
-- **[NEXON: Test Client](server/tools/README.md)** <br>
-  This guide provides a simple CLI client for smoke testing and micro-benchmarking. Use it for quick validation and running quick performance checks.
-- **[NEXON: Local Testing & Evaluation Guide](server/tests/README.md)** <br>
-  This is the primary guide for formal evaluation. It contains the **locally reproducible test suite** with scripts for generating key evidence artifacts referenced in the thesis.
-
 ---
 
 

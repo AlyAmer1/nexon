@@ -1,0 +1,10 @@
+bucket,proto,file,model,vu,rep,arm,run_ts,p50_ms,p95_ms,p99_ms,avg_ms,min_ms,max_ms,iterations,iter_rate
+latency_throughput,grpc,grpc_gpt2_dynamic_v1_rep1_20251019_154853.summary.json,gpt2,1,1,,20251019_154853,144.564,218.883,396.248,156.496,114.194,665.789,556,2.64521975
+latency_throughput,grpc,grpc_gpt2_dynamic_v1_rep2_20251019_155554.summary.json,gpt2,1,2,,20251019_155554,133.235,169.985,203.443,137.826,112.939,455.240,597,2.83925857
+latency_throughput,grpc,grpc_gpt2_dynamic_v1_rep3_20251019_160255.summary.json,gpt2,1,3,,20251019_160255,131.171,163.275,176.777,134.529,118.042,236.137,602,2.86394668
+latency_throughput,grpc,grpc_medium_sized_model_v1_rep1_20251019_152730.summary.json,medium,1,1,,20251019_152730,9.976,17.283,23.186,10.532,3.999,41.700,2410,11.4741768
+latency_throughput,grpc,grpc_medium_sized_model_v1_rep2_20251019_153431.summary.json,medium,1,2,,20251019_153431,10.901,19.880,73.994,13.789,4.019,907.461,2278,10.8463126
+latency_throughput,grpc,grpc_medium_sized_model_v1_rep3_20251019_154132.summary.json,medium,1,3,,20251019_154132,10.405,17.833,26.155,12.141,3.943,849.037,2351,11.1948829
+latency_throughput,grpc,grpc_sigmoid_v1_rep1_20251019_150608.summary.json,sigmoid,1,1,,20251019_150608,6.809,11.546,15.024,7.039,2.143,25.786,2536,12.0749376
+latency_throughput,grpc,grpc_sigmoid_v1_rep2_20251019_151309.summary.json,sigmoid,1,2,,20251019_151309,7.523,13.083,17.258,7.861,2.368,40.014,2494,11.8751136
+latency_throughput,grpc,grpc_sigmoid_v1_rep3_20251019_152009.summary.json,sigmoid,1,3,,20251019_152009,7.596,11.999,15.782,7.493,2.224,37.935,2506,11.9311411
