@@ -367,10 +367,46 @@ bash server/tests/performance/utilities/scripts/collect_env_snapshot.sh
 
 ---
 
-## 4) Resource Utilization 
+## 4) Resource Utilization
 
-Focus: CPU/RAM during representative load; correlate with latency/throughput.
-Optional local capture: `docker stats`, `top`/`htop`, store snapshots under `server/tests/results/performance/*`.
+**Goal:** capture CPU/RAM behavior under representative load and summarize per container (`nexon-envoy`, `nexon-grpc`, `nexon-rest`) across models and protocols.
+
+### Workload & scope
+- Mirrors [**E1 – Latency & Throughput**](#e1--latency--throughput) Setup for comparability: 1 VU × 3 reps × 3 models × (REST+gRPC)
+- Pipeline: RAW → STEADY (filtered 3/timestamp) → SUMMARY (CSVs)
+
+### Runner (one-liners)
+
+From repo root:
+
+```bash
+# Fresh RU run (cleans prior RAW/STEADY/SUMMARY, then capture + summarize)
+bash server/tests/resource_utilization/run_ru_capture.sh --clean && \
+bash server/tests/resource_utilization/build_ru_summaries.sh
+
+# Append a new RU run (keeps prior artifacts, then capture + summarize)
+bash server/tests/resource_utilization/run_ru_capture.sh && \
+bash server/tests/resource_utilization/build_ru_summaries.sh
+
+# Summaries only (when STEADY already exists)
+bash server/tests/resource_utilization/build_ru_summaries.sh
+```
+
+### Where results are saved
+- RAW (per-run, noisy) → `server/tests/results/resource_utilization/raw/{rest,grpc}/ru_<model>_<proto>_rep<r>_<UTC>.csv`
+- STEADY (per-run, filtered) → `server/tests/results/resource_utilization/steady/{rest,grpc}/ru_<model>_<proto>_rep<r>_<UTC>.steady.csv`
+- SUMMARY (CSVs) → `server/tests/results/resource_utilization/summary/`
+  - `RU_peaks_all.csv` — per-run peak CPU%/MEM% by container
+  - `RU_means_all.csv` — mean of peaks across replicates (model/proto/container)
+  - `RU_means_rest.csv`, `RU_means_grpc.csv` — filtered views
+  - `RU_build.log` — ignored local provenance (counts, duplicate check, files consumed)
+
+### Interpreting the summaries
+- Peaks (per run): maximum CPU% and MEM% observed per container → `RU_peaks_all.csv`
+- Means (across reps): average of per-run peaks for each (model, proto, container) → `RU_means_*.csv`
+- Expected pattern (sanity): 
+  - REST runs → higher `nexon-rest` CPU
+  - gRPC runs → higher `nexon-grpc` CPU
 
 ---
 
