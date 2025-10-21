@@ -370,17 +370,20 @@ bash server/tests/performance/utilities/scripts/collect_env_snapshot.sh
 ## 4) Resource Utilization
 
 **Goal:** capture CPU/RAM behavior under representative load and summarize per container (`nexon-envoy`, `nexon-grpc`, `nexon-rest`) across models and protocols.
+The runner is self-contained: it **drives** the load and **collects** Docker stats at the same time.
 
 ### Workload & scope
-- Mirrors [**E1 – Latency & Throughput**](#e1--latency--throughput) Setup for comparability: 1 VU × 3 reps × 3 models × (REST+gRPC)
-- Pipeline: RAW → STEADY (filtered 3/timestamp) → SUMMARY (CSVs)
+- Dimensions: **1 VU × 3 reps × 3 models × (REST + gRPC)**
+- Segment duration: **30s** per (model × proto) segment
+- Models: `sigmoid.onnx`, `medium_sized_model.onnx`, `gpt2_dynamic.onnx`
+- Pipeline: **RAW → STEADY (strict 3 rows/timestamp) → SUMMARY (CSV)**
 
 ### Runner (one-liners)
 
 From repo root:
 
 ```bash
-# Fresh RU run (cleans prior RAW/STEADY/SUMMARY, then capture + summarize)
+# Fresh RU run (cleans RAW/STEADY/SUMMARY, then capture + summarize)
 bash server/tests/resource_utilization/run_ru_capture.sh --clean && \
 bash server/tests/resource_utilization/build_ru_summaries.sh
 

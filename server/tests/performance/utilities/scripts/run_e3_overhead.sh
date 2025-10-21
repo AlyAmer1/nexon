@@ -78,4 +78,4 @@ for r in "${REPS[@]}"; do
     run_grpc "$DIRECT_GRPC_HOST" "sigmoid_direct_reuse" "$r"
   fi
 done
-echo "E2 complete → $OUT"
+echo "E3 complete → $OUT"
