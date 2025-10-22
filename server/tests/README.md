@@ -468,21 +468,7 @@ server/tests/results/robustness/
   robustness_summary.csv    # consolidated (24 rows)
 ```
 
-**How to interpret the results (acceptance criteria)**
-- **RT01 – DB down/recovery**
-  - Expected: Readiness shows DOWN then UP (~11s). During DOWN, REST may show a small error rate in one rep and near-total timeouts in others; gRPC may report `checks_pass_rate=1` while p95 spikes (~3s).
-  - Pass if: service returns to normal after DB is back; no crash; readiness confirms recovery.
-- **RT02 – Service crash & restart**
-  - Expected: REST/gRPC show the container restart window (readiness DOWN then UP); requests during the crash window often fail/timeout; after restart, traffic resumes.
-  - Pass if: automatic recovery occurs and later iterations succeed; no metadata loss or crash loops.
-- **RT03 – CPU stress**
-  - Expected: Under high CPU (≈90%), REST may time out heavily (p95 ≈ 3s, high error rate), while gRPC continues with degraded latency (p95 ≈ 3s) but non-zero successes.
-  - Pass if: platform stays up (no container crash); behavior matches "degraded but operational" under load. (Set `RT03_LOAD=70` for a milder profile if needed.)
-- **RT04 – Network latency (500±50 ms)**
-  - Expected: With induced delay, both REST and gRPC can reach threshold-to-failure (timeouts/EOF). gRPC iterations may be few (e.g., total ≈53) with `error_rate=1`.
-  - Pass if: tests complete, platform remains up, and normal behavior resumes when latency is removed.
-
-These observations match the thesis narrative: the platform degrades predictably under faults and recovers cleanly without crashes or inconsistencies.
+These results match the thesis narrative: the platform degrades predictably under faults and recovers cleanly without crashes or inconsistencies.
 
 **About k6 thresholds (rate ≥ 0.99)**
 The k6 scripts embed a per-request check-rate threshold (`rate >= 0.99`). During fault windows this is crossed intentionally, so k6 prints a ✗ icon. This does not invalidate the robustness experiment; it reflects that many requests failed while the fault was active.
