@@ -413,15 +413,88 @@ bash server/tests/resource_utilization/build_ru_summaries.sh
 
 ---
 
-## 5) Robustness Testing 
+## 5) Robustness Testing
 
-Scenarios: DB down/recovery, service crash & restart, malformed requests, resource pressure, transient network faults.
-Optional local experiments: `docker compose` stop/kill/pause selected services; archive short logs under `server/tests/results/robustness/`.
+**Goal:** Evaluate stability and error-handling under controlled faults while the system continues to run: (1) DB outage & recovery, (2) service crash & restart, (3) CPU stress, (4) network latency injection.
+
+> **Important:** During fault injection it is expected that many requests fail (timeouts/EOF/5xx). Pass/fail is judged at the scenario level (system resilience & recovery), not by per-request success approaching 100% while the fault is active.
+
+**What the suite does**
+- Runs four scenarios × (REST + gRPC) × three replicates automatically:
+  - **RT01 – DB down:** stop Mongo for ~15s, observe readiness DOWN/UP, then recovery.
+  - **RT02 – Service crash:** kill REST/gRPC containers, let Docker restart, observe recovery.
+  - **RT03 – CPU stress:** drive high CPU load; expect degradation without crash.
+  - **RT04 – Network latency:** inject 500±50 ms delay via toxiproxy in front of Envoy.
+- Captures:
+  - k6 JSON summaries (latency/throughput/checks) per run.
+  - Readiness monitors (`READY_MONITOR_<UTC>.log`) showing DOWN @ … and UP @ ….
+  - Consolidated CSV `robustness_summary.csv` (24 rows: 4 × 2 × 3).
+
+**Prerequisites**
+- Stack is up (Mongo / REST / gRPC / Envoy); models fetched.
+
+```bash
+docker compose up -d --build
+docker compose ps --services
+# expect: envoy  grpc  mongo  rest
+```
+
+The runner installs any needed tools inside containers (e.g., `stress-ng`) automatically.
+
+**Run the full robustness suite**
+
+From repo root:
+
+```bash
+# Start with a clean results folder (optional but recommended)
+CLEAN=1 server/tests/robustness/run_rt_all_local.sh
+```
+
+This executes all scenarios and then writes the aggregate CSV.
+
+If you ever need to rebuild the CSV only (without re-running tests):
+
+```bash
+bash server/tests/robustness/util/build_rt_summaries.sh
+```
+
+**Outputs & locations**
+
+```
+server/tests/results/robustness/
+  RT0{1..4}_*/{rest,grpc}/
+    *.summary.json          # k6 summaries (3 per scenario/protocol)
+    READY_MONITOR_*.log     # readiness DOWN/UP logs (not comitted)
+  robustness_summary.csv    # consolidated (24 rows)
+```
+
+**How to interpret the results (acceptance criteria)**
+- **RT01 – DB down/recovery**
+  - Expected: Readiness shows DOWN then UP (~11s). During DOWN, REST may show a small error rate in one rep and near-total timeouts in others; gRPC may report `checks_pass_rate=1` while p95 spikes (~3s).
+  - Pass if: service returns to normal after DB is back; no crash; readiness confirms recovery.
+- **RT02 – Service crash & restart**
+  - Expected: REST/gRPC show the container restart window (readiness DOWN then UP); requests during the crash window often fail/timeout; after restart, traffic resumes.
+  - Pass if: automatic recovery occurs and later iterations succeed; no metadata loss or crash loops.
+- **RT03 – CPU stress**
+  - Expected: Under high CPU (≈90%), REST may time out heavily (p95 ≈ 3s, high error rate), while gRPC continues with degraded latency (p95 ≈ 3s) but non-zero successes.
+  - Pass if: platform stays up (no container crash); behavior matches "degraded but operational" under load. (Set `RT03_LOAD=70` for a milder profile if needed.)
+- **RT04 – Network latency (500±50 ms)**
+  - Expected: With induced delay, both REST and gRPC can reach threshold-to-failure (timeouts/EOF). gRPC iterations may be few (e.g., total ≈53) with `error_rate=1`.
+  - Pass if: tests complete, platform remains up, and normal behavior resumes when latency is removed.
+
+These observations match the thesis narrative: the platform degrades predictably under faults and recovers cleanly without crashes or inconsistencies.
+
+**About k6 thresholds (rate ≥ 0.99)**
+The k6 scripts embed a per-request check-rate threshold (`rate >= 0.99`). During fault windows this is crossed intentionally, so k6 prints a ✗ icon. This does not invalidate the robustness experiment; it reflects that many requests failed while the fault was active.
 
 ---
 
 ## Reproducibility Notes
 
-- Directory layout & filenames are stable; artifacts are UTC-timestamped to avoid overwrites.
-- Runners are idempotent: re-running creates a new timestamped set without touching prior results.
-- Single-source oracles: REST assertions live in the Postman collection; gRPC expectations are encoded in the runner and the acceptance script for consistent grading.
+**Addendum**
+- All artifacts are timestamped in UTC and never overwrite prior runs; use `CLEAN=1` flags where provided to start fresh.
+- Single-source oracles: REST assertions live in the Postman collection; gRPC assertions are encoded in the runners. Robustness acceptance uses readiness monitors (DOWN/UP) plus recovery of successful iterations.
+- Platform differences:
+  - Client VM (isolated): per-request checks typically meet ≥99% outside fault windows.
+  - Developer laptops (macOS/Windows/WSL): background noise and Docker Desktop can increase timeouts; accept ≥90% for performance sections and rely on scenario-level recovery criteria for robustness.
+- The toxiproxy setup used in RT04 is arch-aware (`arm64`/`x86_64`) and invoked automatically by the runner.
