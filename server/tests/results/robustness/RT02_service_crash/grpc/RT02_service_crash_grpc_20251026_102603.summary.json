@@ -1,0 +1,81 @@
+{
+    "root_group": {
+        "checks": {
+            "gRPC OK": {
+                "path": "::gRPC OK",
+                "id": "1f1fbbf5b0d190b3afff107d135772f5",
+                "passes": 54843,
+                "fails": 413,
+                "name": "gRPC OK"
+            }
+        },
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {}
+    },
+    "metrics": {
+        "grpc_req_duration": {
+            "med": 4.141042,
+            "max": 520.948875,
+            "p(90)": 8.0924585,
+            "p(95)": 10.191750249999993,
+            "avg": 8.417836433491493,
+            "min": 0.667959
+        },
+        "data_sent": {
+            "count": 18320604,
+            "rate": 87233.73518253867
+        },
+        "data_received": {
+            "rate": 81403.1188460462,
+            "count": 17096073
+        },
+        "iteration_duration": {
+            "p(95)": 61.75551025,
+            "avg": 59.44301859609845,
+            "min": 50.930917,
+            "med": 55.169167,
+            "max": 582.749792,
+            "p(90)": 59.2985205
+        },
+        "iterations": {
+            "count": 55256,
+            "rate": 263.1019845877547
+        },
+        "checks": {
+            "passes": 54843,
+            "fails": 413,
+            "thresholds": {
+                "rate>=0.99": false
+            },
+            "value": 0.9925256985666715
+        },
+        "vus": {
+            "max": 20,
+            "value": 1,
+            "min": 0
+        },
+        "vus_max": {
+            "value": 20,
+            "min": 20,
+            "max": 20
+        },
+        "grpc_total_call_ms": {
+            "max": 522,
+            "p(90)": 8,
+            "p(95)": 10,
+            "avg": 8.57322281743159,
+            "min": 0,
+            "med": 4
+        },
+        "rpc_duration_ms": {
+            "avg": 8.57322281743159,
+            "min": 0,
+            "med": 4,
+            "max": 522,
+            "p(90)": 8,
+            "p(95)": 10
+        }
+    }
+}

@@ -1,0 +1,81 @@
+{
+    "root_group": {
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "gRPC OK": {
+                    "name": "gRPC OK",
+                    "path": "::gRPC OK",
+                    "id": "1f1fbbf5b0d190b3afff107d135772f5",
+                    "passes": 54565,
+                    "fails": 760
+                }
+            },
+        "name": ""
+    },
+    "metrics": {
+        "grpc_req_duration": {
+            "p(90)": 8.037175000000001,
+            "p(95)": 9.966658399999998,
+            "avg": 8.328597057315937,
+            "min": 0.54575,
+            "med": 4.054666,
+            "max": 522.416208
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 20
+        },
+        "data_received": {
+            "rate": 81024.9288683236,
+            "count": 17016144
+        },
+        "vus_max": {
+            "value": 20,
+            "min": 20,
+            "max": 20
+        },
+        "rpc_duration_ms": {
+            "p(90)": 8,
+            "p(95)": 10,
+            "avg": 8.477198373248983,
+            "min": 0,
+            "med": 4,
+            "max": 523
+        },
+        "grpc_total_call_ms": {
+            "avg": 8.477198373248983,
+            "min": 0,
+            "med": 4,
+            "max": 523,
+            "p(90)": 8,
+            "p(95)": 10
+        },
+        "data_sent": {
+            "count": 18332886,
+            "rate": 87294.79393810286
+        },
+        "iteration_duration": {
+            "avg": 59.36682601397177,
+            "min": 50.76825,
+            "med": 55.106167,
+            "max": 579.404,
+            "p(90)": 59.294692000000005,
+            "p(95)": 61.5145246
+        },
+        "iterations": {
+            "count": 55325,
+            "rate": 263.4383083288436
+        },
+        "checks": {
+            "passes": 54565,
+            "fails": 760,
+            "thresholds": {
+                "rate>=0.99": true
+            },
+            "value": 0.9862629914143697
+        }
+    }
+}

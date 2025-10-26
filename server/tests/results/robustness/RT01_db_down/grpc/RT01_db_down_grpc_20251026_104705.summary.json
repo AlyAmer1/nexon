@@ -1,0 +1,81 @@
+{
+    "metrics": {
+        "grpc_req_duration": {
+            "med": 4.138459,
+            "max": 16426.015958,
+            "p(90)": 8.074875,
+            "p(95)": 9.913542,
+            "avg": 10.970884493632195,
+            "min": 1.292459
+        },
+        "data_sent": {
+            "count": 17595388,
+            "rate": 83780.4792626269
+        },
+        "rpc_duration_ms": {
+            "avg": 11.127374955189525,
+            "min": 1,
+            "med": 4,
+            "max": 16426,
+            "p(90)": 8,
+            "p(95)": 10
+        },
+        "grpc_total_call_ms": {
+            "avg": 11.127374955189525,
+            "min": 1,
+            "med": 4,
+            "max": 16426,
+            "p(90)": 8,
+            "p(95)": 10
+        },
+        "iterations": {
+            "count": 53001,
+            "rate": 252.36437988173313
+        },
+        "iteration_duration": {
+            "avg": 61.970668597706286,
+            "min": 51.581125,
+            "med": 55.175584,
+            "max": 16476.268167,
+            "p(90)": 59.295333,
+            "p(95)": 61.372708
+        },
+        "checks": {
+            "passes": 53001,
+            "fails": 0,
+            "thresholds": {
+                "rate>=0.99": false
+            },
+            "value": 1
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 20
+        },
+        "vus_max": {
+            "max": 20,
+            "value": 20,
+            "min": 20
+        },
+        "data_received": {
+            "count": 16508575,
+            "rate": 78605.61673564806
+        }
+    },
+    "root_group": {
+        "groups": {},
+        "checks": {
+                "gRPC OK": {
+                    "path": "::gRPC OK",
+                    "id": "1f1fbbf5b0d190b3afff107d135772f5",
+                    "passes": 53001,
+                    "fails": 0,
+                    "name": "gRPC OK"
+                }
+            },
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+}

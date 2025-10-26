@@ -1,0 +1,81 @@
+{
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "gRPC OK": {
+                    "name": "gRPC OK",
+                    "path": "::gRPC OK",
+                    "id": "1f1fbbf5b0d190b3afff107d135772f5",
+                    "passes": 52946,
+                    "fails": 0
+                }
+            }
+    },
+    "metrics": {
+        "checks": {
+            "passes": 52946,
+            "fails": 0,
+            "thresholds": {
+                "rate>=0.99": false
+            },
+            "value": 1
+        },
+        "rpc_duration_ms": {
+            "min": 1,
+            "med": 4,
+            "max": 16461,
+            "p(90)": 8,
+            "p(95)": 10,
+            "avg": 11.175046273561742
+        },
+        "data_sent": {
+            "count": 17578209,
+            "rate": 83690.76772782962
+        },
+        "iterations": {
+            "count": 52946,
+            "rate": 252.07866103524353
+        },
+        "vus_max": {
+            "value": 20,
+            "min": 20,
+            "max": 20
+        },
+        "data_received": {
+            "count": 16491731,
+            "rate": 78517.98943514936
+        },
+        "iteration_duration": {
+            "max": 16512.526792,
+            "p(90)": 59.361312500000004,
+            "p(95)": 61.57446875,
+            "avg": 62.03726869833402,
+            "min": 51.651667,
+            "med": 55.1701665
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 20
+        },
+        "grpc_total_call_ms": {
+            "avg": 11.175046273561742,
+            "min": 1,
+            "med": 4,
+            "max": 16461,
+            "p(90)": 8,
+            "p(95)": 10
+        },
+        "grpc_req_duration": {
+            "min": 1.3415,
+            "med": 4.1244165,
+            "max": 16460.403958,
+            "p(90)": 8.1412915,
+            "p(95)": 10.002739999999998,
+            "avg": 11.021581087712057
+        }
+    }
+}

@@ -61,6 +61,7 @@ const flatValues=new SharedArray('values',function(){
 });
 
 const rpc_duration_ms = new Trend('rpc_duration_ms');
+const grpc_total_call_ms = new Trend('grpc_total_call_ms'); // ← added
 
 export let options = {
   scenarios: PREWARM
@@ -75,21 +76,31 @@ const client = new grpc.Client();
 client.load([], '../../../grpc_service/protos/inference.proto');
 let connected = false;
 
-
 export default function(){
-  if (NEW_CONN) { client.connect(HOST, { plaintext: true, maxReceiveSize: MAX_MSG_BYTES, maxSendSize: MAX_MSG_BYTES }); }
-  else if (!connected) { client.connect(HOST, { plaintext: true, maxReceiveSize: MAX_MSG_BYTES, maxSendSize: MAX_MSG_BYTES }); connected = true; }
   const flat=flatValues[0];
   const tc=(DTYPE==='int64')?int64sToB64LE(flat):floatsToB64LE(flat);
   const req={model_name:MODEL_NAME,input:{dims:DIMS,tensor_content:tc}};
 
-  const t0=Date.now();
-  const res=client.invoke('nexon.grpc.inference.v1.InferenceService/Predict', req, { timeout: REQ_TIMEOUT });
-  rpc_duration_ms.add(Date.now()-t0);
+  if (NEW_CONN) {
+    // Measure connect + RPC for NEW connection path
+    const t0 = Date.now();
+    client.connect(HOST, { plaintext: true, maxReceiveSize: MAX_MSG_BYTES, maxSendSize: MAX_MSG_BYTES });
+    const res=client.invoke('nexon.grpc.inference.v1.InferenceService/Predict', req, { timeout: REQ_TIMEOUT });
+    const dt = Date.now()-t0;           // ← added (shared delta)
+    rpc_duration_ms.add(dt);
+    grpc_total_call_ms.add(dt);         // ← added
+    check(res,{ 'gRPC OK':(r)=>r && r.status===grpc.StatusOK });
+    client.close();
+  } else {
+    if (!connected) { client.connect(HOST, { plaintext: true, maxReceiveSize: MAX_MSG_BYTES, maxSendSize: MAX_MSG_BYTES }); connected = true; }
+    const t0=Date.now();
+    const res=client.invoke('nexon.grpc.inference.v1.InferenceService/Predict', req, { timeout: REQ_TIMEOUT });
+    const dt = Date.now()-t0;           // ← added (shared delta)
+    rpc_duration_ms.add(dt);
+    grpc_total_call_ms.add(dt);         // ← added
+    check(res,{ 'gRPC OK':(r)=>r && r.status===grpc.StatusOK });
+  }
 
-  check(res,{ 'gRPC OK':(r)=>r && r.status===grpc.StatusOK });
-
-  if(NEW_CONN) client.close();
   sleep(0.05);
 }
 export function teardown(){ try{ client.close(); }catch(_){ } }

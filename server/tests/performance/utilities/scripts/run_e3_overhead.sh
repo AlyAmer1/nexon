@@ -18,11 +18,11 @@ TREND="min,avg,med,p(50),p(90),p(95),p(99),max"
 : "${REQ_TIMEOUT:=120s}"
 : "${MAX_MSG_MB:=256}"
 
-# Endpoints
+# Endpoints (Envoy and Direct)
 ENVOY_REST_BASE="${ENVOY_REST_BASE:-http://127.0.0.1:8080}"
 ENVOY_GRPC_HOST="${ENVOY_GRPC_HOST:-127.0.0.1:8080}"
-DIRECT_REST_BASE="${DIRECT_REST_BASE:-}"   # optional
-DIRECT_GRPC_HOST="${DIRECT_GRPC_HOST:-}"   # optional
+DIRECT_REST_BASE="${DIRECT_REST_BASE:-http://127.0.0.1:8000}"
+DIRECT_GRPC_HOST="${DIRECT_GRPC_HOST:-127.0.0.1:50051}"
 
 prewarm_pair() {
   local base="$1" host="$2"
@@ -38,7 +38,8 @@ prewarm_pair() {
 
 run_rest() {
   local base="$1" label="$2" noreuse_flag="$3" rep="$4"
-  local TS=$(date -u +%Y%m%d_%H%M%S)
+  local TS
+  TS=$(date -u +%Y%m%d_%H%M%S)
   CHECKS_MIN="$CHECKS_MIN" REQ_TIMEOUT="$REQ_TIMEOUT" \
   k6 run $noreuse_flag \
     --summary-export "$OUTR/rest_${label}_v${VUS}_rep${rep}_${TS}.summary.json" \
@@ -48,9 +49,10 @@ run_rest() {
 }
 
 run_grpc() {
-  local host="$1" label="$2" rep="$3"
-  local TS=$(date -u +%Y%m%d_%H%M%S)
-  CHECKS_MIN="$CHECKS_MIN" REQ_TIMEOUT="$REQ_TIMEOUT" MAX_MSG_MB="$MAX_MSG_MB" \
+  local host="$1" label="$2" rep="$3" new_conn="${4:-0}"
+  local TS
+  TS=$(date -u +%Y%m%d_%H%M%S)
+  CHECKS_MIN="$CHECKS_MIN" REQ_TIMEOUT="$REQ_TIMEOUT" MAX_MSG_MB="$MAX_MSG_MB" NEW_CONN="$new_conn" \
   k6 run \
     --summary-export "$OUTG/grpc_${label}_v${VUS}_rep${rep}_${TS}.summary.json" \
     --summary-trend-stats "$TREND" \
@@ -58,24 +60,25 @@ run_grpc() {
     -e HOST="$host" -e MODEL_NAME="$MODEL" -e USE_FILE=1 -e VUS="$VUS"
 }
 
-# Prewarm (Envoy + optional Direct)
+# Prewarm both pairs (Envoy + Direct)
 prewarm_pair "$ENVOY_REST_BASE" "$ENVOY_GRPC_HOST"
-if [[ -n "$DIRECT_REST_BASE" && -n "$DIRECT_GRPC_HOST" ]]; then
-  prewarm_pair "$DIRECT_REST_BASE" "$DIRECT_GRPC_HOST"
-fi
+prewarm_pair "$DIRECT_REST_BASE" "$DIRECT_GRPC_HOST"
 
 for r in "${REPS[@]}"; do
+  # REST via Envoy: reuse + new
   run_rest "$ENVOY_REST_BASE" "sigmoid_envoy_reuse" "" "$r"
   run_rest "$ENVOY_REST_BASE" "sigmoid_envoy_new"   "--no-connection-reuse" "$r"
 
-  if [[ -n "$DIRECT_REST_BASE" ]]; then
-    run_rest "$DIRECT_REST_BASE" "sigmoid_direct_reuse" "" "$r"
-    run_rest "$DIRECT_REST_BASE" "sigmoid_direct_new"   "--no-connection-reuse" "$r"
-  fi
+  # REST direct: reuse + new
+  run_rest "$DIRECT_REST_BASE" "sigmoid_direct_reuse" "" "$r"
+  run_rest "$DIRECT_REST_BASE" "sigmoid_direct_new"   "--no-connection-reuse" "$r"
 
-  run_grpc "$ENVOY_GRPC_HOST" "sigmoid_envoy_reuse" "$r"
-  if [[ -n "$DIRECT_GRPC_HOST" ]]; then
-    run_grpc "$DIRECT_GRPC_HOST" "sigmoid_direct_reuse" "$r"
-  fi
+  # gRPC via Envoy: reuse + new
+  run_grpc "$ENVOY_GRPC_HOST" "sigmoid_envoy_reuse" "$r" 0
+  run_grpc "$ENVOY_GRPC_HOST" "sigmoid_envoy_new"   "$r" 1
+
+  # gRPC direct: reuse + new
+  run_grpc "$DIRECT_GRPC_HOST" "sigmoid_direct_reuse" "$r" 0
+  run_grpc "$DIRECT_GRPC_HOST" "sigmoid_direct_new"   "$r" 1
 done
 echo "E3 complete → $OUT"

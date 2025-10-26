@@ -11,7 +11,7 @@ fi
 
 mkdir -p "$BASE/bandwidth/rest" "$BASE/bandwidth/grpc"
 
-# Sources we’ll scan (both structured E1 and flat)
+# Sources that are scanned (both structured E1 and flat)
 REST_DIRS=(
   "$BASE/latency_throughput/rest"
   "$BASE/rest"

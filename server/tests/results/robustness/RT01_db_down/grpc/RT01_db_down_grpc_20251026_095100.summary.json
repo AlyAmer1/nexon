@@ -1,0 +1,81 @@
+{
+    "root_group": {
+        "groups": {},
+        "checks": {
+                "gRPC OK": {
+                    "name": "gRPC OK",
+                    "path": "::gRPC OK",
+                    "id": "1f1fbbf5b0d190b3afff107d135772f5",
+                    "passes": 53049,
+                    "fails": 0
+                }
+            },
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "metrics": {
+        "vus_max": {
+            "value": 20,
+            "min": 20,
+            "max": 20
+        },
+        "iterations": {
+            "count": 53049,
+            "rate": 252.540403215465
+        },
+        "checks": {
+            "passes": 53049,
+            "fails": 0,
+            "thresholds": {
+                "rate>=0.99": false
+            },
+            "value": 1
+        },
+        "grpc_req_duration": {
+            "med": 4.0445,
+            "max": 16482.616208,
+            "p(90)": 7.942516600000001,
+            "p(95)": 9.7119998,
+            "avg": 10.902791116251057,
+            "min": 1.324458
+        },
+        "data_sent": {
+            "count": 17611314,
+            "rate": 83838.87233904812
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 20
+        },
+        "rpc_duration_ms": {
+            "med": 4,
+            "max": 16483,
+            "p(90)": 8,
+            "p(95)": 10,
+            "avg": 11.055363908838999,
+            "min": 1
+        },
+        "grpc_total_call_ms": {
+            "max": 16483,
+            "p(90)": 8,
+            "p(95)": 10,
+            "avg": 11.055363908838999,
+            "min": 1,
+            "med": 4
+        },
+        "data_received": {
+            "rate": 78660.07314802859,
+            "count": 16523448
+        },
+        "iteration_duration": {
+            "p(95)": 61.291967199999995,
+            "avg": 61.91460119482001,
+            "min": 51.676125,
+            "med": 55.084875,
+            "max": 16532.836125,
+            "p(90)": 59.1868832
+        }
+    }
+}

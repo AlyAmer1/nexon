@@ -4,3 +4,6 @@
 *.proto      text eol=lf
 **/Dockerfile text eol=lf
 *.py         text eol=lf
+*.report.html linguist-generated=true
+*.summary.html linguist-generated=true
+server/tests/results/** linguist-generated=true

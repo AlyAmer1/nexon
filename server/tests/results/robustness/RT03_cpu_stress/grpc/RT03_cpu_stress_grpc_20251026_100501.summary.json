@@ -1,0 +1,81 @@
+{
+    "metrics": {
+        "checks": {
+            "passes": 53852,
+            "fails": 0,
+            "thresholds": {
+                "rate>=0.99": false
+            },
+            "value": 1
+        },
+        "vus_max": {
+            "max": 20,
+            "value": 20,
+            "min": 20
+        },
+        "data_sent": {
+            "count": 17863457,
+            "rate": 85052.80862014517
+        },
+        "data_received": {
+            "rate": 79926.98320096929,
+            "count": 16786891
+        },
+        "iteration_duration": {
+            "max": 193.097416,
+            "p(90)": 74.67705410000002,
+            "p(95)": 82.87570244999999,
+            "avg": 60.98641387458212,
+            "min": 51.630375,
+            "med": 56.599416
+        },
+        "iterations": {
+            "count": 53852,
+            "rate": 256.4041131462996
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 20
+        },
+        "grpc_req_duration": {
+            "p(90)": 21.278328500000004,
+            "p(95)": 29.078124999999996,
+            "avg": 9.390450238189857,
+            "min": 1.401666,
+            "med": 5.516938,
+            "max": 130.444167
+        },
+        "rpc_duration_ms": {
+            "avg": 9.545365074649037,
+            "min": 1,
+            "med": 6,
+            "max": 131,
+            "p(90)": 21,
+            "p(95)": 29
+        },
+        "grpc_total_call_ms": {
+            "max": 131,
+            "p(90)": 21,
+            "p(95)": 29,
+            "avg": 9.545365074649037,
+            "min": 1,
+            "med": 6
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "gRPC OK": {
+                    "name": "gRPC OK",
+                    "path": "::gRPC OK",
+                    "id": "1f1fbbf5b0d190b3afff107d135772f5",
+                    "passes": 53852,
+                    "fails": 0
+                }
+            }
+    }
+}

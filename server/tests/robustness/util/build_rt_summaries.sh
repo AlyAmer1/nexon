@@ -17,26 +17,39 @@ find server/tests/results/robustness -type f -name '*.summary.json' | sort | whi
   else
     checks="0"
   fi
-  # strict error rate used for BOTH REST & gRPC (uniform, thesis-friendly)
+  # Uniform strict error rate (thesis-friendly)
   error=$(awk "BEGIN{er=1-$checks; if(er<0) er=0; if(er>1) er=1; printf \"%.12f\", er}")
 
-  p95=$(jq -r '(
-      .metrics.http_req_duration["p(95)"] //
-      .metrics.grpc_req_duration["p(95)"] //
-      .metrics.rpc_duration_ms["p(95)"] // 0
-    )' "$f")
+  # Compact jq filter to avoid multi-line parsing issues
+  p95=$(jq -r '(.metrics.http_req_duration["p(95)"] // .metrics.rpc_duration_ms["p(95)"] // .metrics.grpc_req_duration["p(95)"] // 0)' "$f") \
+    || { echo "JQ parse error in $f" >&2; exit 1; }
 
-  iters=$(jq -r '.metrics.iterations.count // .metrics.iterations.value // 0' "$f")
+  iters=$(jq -r '(.metrics.iterations.count // .metrics.iterations.value // 0)' "$f")
 
   case "$scen" in
-    RT03_*|RT04_*) downtime="N/A" ;;
-    *) latest_log=$(ls -1t "$dir"/READY_MONITOR_*.log 2>/dev/null | head -n1 || true)
-       if [ -n "${latest_log:-}" ]; then
-         dt=$(grep -o 'downtime [0-9]\+s' "$latest_log" | head -n1 | tr -cd '0-9')
-         downtime=${dt:-0}
-       else
-         downtime="0"
-       fi ;;
+    RT03_*|RT04_*)
+      downtime="N/A"
+      ;;
+    *)
+      latest_log=$(ls -1t "$dir"/READY_MONITOR_*.log 2>/dev/null | head -n1 || true)
+      if [ -n "${latest_log:-}" ]; then
+        # Portable ERE: -E and + (not \+)
+        dt=$(grep -Eo 'downtime[[:space:]][0-9]+s' "$latest_log" | head -n1 | tr -cd '0-9')
+        if [ -n "$dt" ]; then
+          downtime="$dt"
+        else
+          down=$(grep -Em1 'DOWN @[[:space:]]*[0-9]+' "$latest_log" | awk '{print $3}')
+          up=$(grep -Em1 'UP @[[:space:]]*[0-9]+'   "$latest_log" | awk '{print $3}')
+          if [ -n "${down:-}" ] && [ -n "${up:-}" ]; then
+            downtime=$((up - down))
+          else
+            downtime="0"
+          fi
+        fi
+      else
+        downtime="0"
+      fi
+      ;;
   esac
 
   pass="PASS"
@@ -45,7 +58,10 @@ find server/tests/results/robustness -type f -name '*.summary.json' | sort | whi
       has_down_up=0
       for log in "$dir"/READY_MONITOR_*.log; do
         [ -f "$log" ] || continue
-        grep -q 'DOWN @' "$log" && grep -q 'UP @' "$log" && has_down_up=1 && break
+        if grep -q 'DOWN @' "$log" && grep -q 'UP @' "$log"; then
+          has_down_up=1
+          break
+        fi
       done
       if [ "$iters" -le 0 ] || [ "$has_down_up" -eq 0 ]; then pass="FAIL"; fi
       ;;

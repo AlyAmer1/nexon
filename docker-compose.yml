@@ -2,6 +2,7 @@ services:
   mongo:
     image: mongo:6
     container_name: nexon-mongo
+    restart: always
     ports: ["27017:27017"]
     volumes: ["mongo_data:/data/db"]
     healthcheck:
@@ -15,6 +16,7 @@ services:
       context: .
       dockerfile: server/rest/Dockerfile
     container_name: nexon-rest
+    restart: always
     env_file: ./.env
     environment:
       NEXON_MONGO_URI: mongodb://mongo:27017
@@ -35,6 +37,7 @@ services:
       context: .
       dockerfile: server/grpc_service/Dockerfile
     container_name: nexon-grpc
+    restart: always
     env_file: ./.env
     environment:
       NEXON_MONGO_URI: mongodb://mongo:27017
@@ -57,6 +60,7 @@ services:
   envoy:
     image: envoyproxy/envoy:v1.31.2
     container_name: nexon-envoy
+    restart: always
     command: ["-c", "/etc/envoy/envoy.compose.yaml", "--mode", "serve", "--log-level", "info"]
     volumes:
       - ./ops/envoy/envoy.compose.yaml:/etc/envoy/envoy.compose.yaml:ro

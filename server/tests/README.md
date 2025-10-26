@@ -266,8 +266,7 @@ bash server/tests/performance/utilities/scripts/gen_e2_bandwidth.sh
 **Where results are saved**
 - REST per-run JSON → `server/tests/results/performance/bandwidth/rest/*.bandwidth.json`
 - gRPC per-run JSON → `server/tests/results/performance/bandwidth/grpc/*.bandwidth.json`
-- REST aggregate CSV → `server/tests/results/performance/bandwidth/E2_bandwidth_rest.csv`
-- gRPC aggregate CSV → `server/tests/results/performance/bandwidth/E2_bandwidth_grpc.csv`
+- aggregate CSVs → `server/tests/results/performance/bandwidth/E2_bandwidth_{rest,grpc}.csv`
 
 **Notes**
 - The generator searches both `latency_throughput/{rest,grpc}` and legacy flat `{rest,grpc}` folders.
@@ -295,7 +294,7 @@ Isolate protocol/path overhead at low concurrency. Two knobs:
 **Runner**
 
 ```bash
-# Optional: clear only E2 artifacts
+# Optional: clear previous E3 artifacts + Prewarm models + Run
 bash server/tests/performance/utilities/scripts/run_e3_overhead.sh --clean
 
 # Prewarm models + Run all 2×2×2 (path × conn × proto) for sigmoid, 1 VU × 3 reps
@@ -311,6 +310,7 @@ The script selects the appropriate endpoints for “Envoy” vs “Direct” int
 **Where results are saved**
 - REST → `server/tests/results/performance/overhead/rest/*.summary.json`
 - gRPC → `server/tests/results/performance/overhead/grpc/*.summary.json`
+- aggregate CSVs → `server/tests/results/performance/overhead/overhead_{rest,grpc}.csv`
 
 ### E4 – Scalability
 

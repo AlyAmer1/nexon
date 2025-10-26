@@ -1,0 +1,81 @@
+{
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "gRPC OK": {
+                    "name": "gRPC OK",
+                    "path": "::gRPC OK",
+                    "id": "1f1fbbf5b0d190b3afff107d135772f5",
+                    "passes": 54783,
+                    "fails": 420
+                }
+            }
+    },
+    "metrics": {
+        "checks": {
+            "passes": 54783,
+            "fails": 420,
+            "thresholds": {
+                "rate>=0.99": false
+            },
+            "value": 0.9923917178414217
+        },
+        "vus_max": {
+            "value": 20,
+            "min": 20,
+            "max": 20
+        },
+        "data_received": {
+            "count": 17078809,
+            "rate": 81303.80233606398
+        },
+        "iteration_duration": {
+            "p(90)": 59.4141336,
+            "p(95)": 61.931462499999995,
+            "avg": 59.49810390361012,
+            "min": 50.675209,
+            "med": 55.193666,
+            "max": 575.180875
+        },
+        "rpc_duration_ms": {
+            "min": 0,
+            "med": 4,
+            "max": 521,
+            "p(90)": 8,
+            "p(95)": 11,
+            "avg": 8.648515479231202
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 20
+        },
+        "grpc_req_duration": {
+            "avg": 8.49777939477928,
+            "min": 0.532083,
+            "med": 4.193583,
+            "max": 520.394084,
+            "p(90)": 8.2393166,
+            "p(95)": 10.293116599999992
+        },
+        "data_sent": {
+            "count": 18302554,
+            "rate": 87129.44987329838
+        },
+        "grpc_total_call_ms": {
+            "p(90)": 8,
+            "p(95)": 11,
+            "avg": 8.648515479231202,
+            "min": 0,
+            "med": 4,
+            "max": 521
+        },
+        "iterations": {
+            "count": 55203,
+            "rate": 262.79430845310935
+        }
+    }
+}
